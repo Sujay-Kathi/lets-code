@@ -33,7 +33,9 @@ export default function QuizBuilder() {
   const [quizTitle, setQuizTitle] = useState("Untitled Quiz");
   const [language, setLanguage] = useState("python");
   const [timeLimit, setTimeLimit] = useState(30);
+  const [maxAttempts, setMaxAttempts] = useState(4);
   const [loading, setLoading] = useState(true);
+
   const [saving, setSaving] = useState(false);
   const [showTypeDD, setShowTypeDD] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -46,7 +48,9 @@ export default function QuizBuilder() {
       if (res.ok) {
         const data: Quiz = await res.json();
         setQuiz(data); setQuizTitle(data.title); setLanguage(data.language); setTimeLimit(data.time_limit);
+        setMaxAttempts((data as any).max_attempts || 4);
         setQuestions(data.questions || []);
+
         if (data.questions?.length > 0) setActiveQ(0);
       }
     } catch (e) { console.error(e); }
@@ -78,9 +82,10 @@ export default function QuizBuilder() {
 
   const saveSettings = async () => {
     setSaving(true);
-    try { await fetch(`${SERVER_URL}/quizzes/${quizCode}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: quizTitle, language, time_limit: timeLimit }) }); } catch (e) { console.error(e); }
+    try { await fetch(`${SERVER_URL}/quizzes/${quizCode}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: quizTitle, language, time_limit: timeLimit, max_attempts: maxAttempts }) }); } catch (e) { console.error(e); }
     finally { setSaving(false); }
   };
+
 
   const publish = async () => {
     if (questions.length === 0) { alert("Add at least one question"); return; }
@@ -127,11 +132,18 @@ export default function QuizBuilder() {
           </select>
         </div>
         <div>
+          <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1.5 block">Max Attempts</label>
+          <select value={maxAttempts} onChange={e => setMaxAttempts(Number(e.target.value))} className="input-field py-2.5 px-4 rounded-lg text-sm">
+            {[1, 2, 3, 4, 5, 10].map(n => <option key={n} value={n}>{n} {n === 1 ? 'Attempt' : 'Attempts'}</option>)}
+          </select>
+        </div>
+        <div>
           <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1.5 block">Language</label>
           <div className="flex gap-1 bg-[var(--surface-container-highest)] rounded-lg p-1">
             {["python","c","javascript"].map(l => <button key={l} onClick={() => setLanguage(l)} className={`px-4 py-2 rounded-md text-xs font-medium transition-all ${language === l ? "bg-[var(--primary)] text-[var(--on-primary)]" : "text-[var(--on-surface-variant)]"}`}>{l === "c" ? "C" : l === "javascript" ? "JS" : "Python"}</button>)}
           </div>
         </div>
+
       </div>
 
       <div className="flex-1 flex overflow-hidden">

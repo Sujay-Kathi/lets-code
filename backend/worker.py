@@ -2,7 +2,8 @@ from celery import Celery
 import os
 import subprocess
 from database import SessionLocal
-from models import Submission
+from models import Submission, Question
+from datetime import datetime
 import socketio
 
 # Celery Configuration
@@ -23,6 +24,30 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
+def run_in_docker(code: str, language: str, test_input: str) -> str:
+    docker_cmd = [
+        "docker", "run", "--rm", "-i",
+        "--network", "none",
+        "--memory", "128m",
+        "rce-worker",
+        "--language", language
+    ]
+    try:
+        result = subprocess.run(
+            docker_cmd,
+            input=f"{code}\n{test_input}", # Assuming the wrapper reads code first or we handle differently
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        else:
+            return result.stderr or result.stdout
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
 @celery_app.task(name="execute_code")
 def execute_code_task(submission_id: int):
     # Setup database session
@@ -40,45 +65,43 @@ def execute_code_task(submission_id: int):
         db.commit()
         sio.emit('status_update', {'submission_id': submission_id, 'status': 'processing'})
 
-        # Run Docker container with limits
-        # --rm: remove container after execution
-        # --network none: no internet access
-        # --memory: limit memory
-        # -i: interactive (to pass code via stdin)
-        # We assume the docker image is built as `rce-worker`
+        question = db.query(Question).filter(Question.id == submission.question_id).first()
         
-        # Build command
-        docker_cmd = [
-            "docker", "run", "--rm", "-i",
-            "--network", "none",
-            "--memory", "128m",
-            "rce-worker",
-            "--language", submission.language
-        ]
+        # Split test cases and expected outputs by newline
+        inputs = [i.strip() for i in (question.test_cases or "").split("\n") if i.strip()]
+        expecteds = [e.strip() for e in (question.expected_output or "").split("\n") if e.strip()]
         
-        # Execute
-        try:
-            result = subprocess.run(
-                docker_cmd,
-                input=submission.code,
-                capture_output=True,
-                text=True,
-                timeout=30  # Overall docker timeout (generous for Windows cold starts)
-            )
+        # If no test cases defined, use empty input once
+        if not inputs:
+            inputs = [""]
+            expecteds = [(question.expected_output or "").strip()]
+
+        total_cases = len(inputs)
+        passed_cases = 0
+        all_results = []
+
+        start_time = datetime.utcnow()
+        for i in range(total_cases):
+            test_input = inputs[i]
+            expected = expecteds[i] if i < len(expecteds) else ""
             
-            if result.returncode == 0:
-                submission.result = result.stdout
-                submission.status = "completed"
-            else:
-                submission.result = result.stderr or result.stdout
-                submission.status = "error"
-        except subprocess.TimeoutExpired:
-            submission.result = "Docker Execution timed out"
-            submission.status = "error"
-        except Exception as e:
-            submission.result = str(e)
-            submission.status = "error"
+            output = run_in_docker(submission.code, submission.language, test_input)
+            all_results.append(output)
             
+            if output.strip() == expected.strip():
+                passed_cases += 1
+        end_time = datetime.utcnow()
+        
+        submission.time_taken = int((end_time - start_time).total_seconds())
+        submission.status = "completed"
+        submission.result = "\n---\n".join(all_results)
+        
+        # Scoring logic: (Passed / Total) * Points - Penalty
+        base_score = (passed_cases / total_cases) * question.points if total_cases > 0 else 0
+        penalty = submission.tab_switches * 2 # 2 points penalty per tab switch
+        submission.score = max(0, int(base_score - penalty))
+        submission.is_correct = (passed_cases == total_cases)
+
         db.commit()
         
         # Emit final status
@@ -89,6 +112,16 @@ def execute_code_task(submission_id: int):
         })
         
         return {"submission_id": submission_id, "status": submission.status}
-        
+
+    except subprocess.TimeoutExpired:
+        submission.result = "Docker Execution timed out"
+        submission.status = "error"
+        db.commit()
+    except Exception as e:
+        if 'submission' in locals() and submission:
+            submission.result = str(e)
+            submission.status = "error"
+            db.commit()
+        return {"error": str(e)}
     finally:
         db.close()
