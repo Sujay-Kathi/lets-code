@@ -1,7 +1,23 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from database import Base
+import enum
+
+
+class QuestionType(str, enum.Enum):
+    CODING_PROBLEM = "coding_problem"
+    DEBUGGING = "debugging"
+    OUTPUT_PREDICTION = "output_prediction"
+    FILL_IN_CODE = "fill_in_code"
+    FUNCTION_BASED = "function_based"
+
+
+class QuizStatus(str, enum.Enum):
+    DRAFT = "draft"
+    LIVE = "live"
+    COMPLETED = "completed"
+
 
 class User(Base):
     __tablename__ = "users"
@@ -9,26 +25,44 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     role = Column(String, default="student")
-    
+
     submissions = relationship("Submission", back_populates="user")
+
 
 class Quiz(Base):
     __tablename__ = "quizzes"
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
-    
-    questions = relationship("Question", back_populates="quiz")
+    code = Column(String(8), unique=True, index=True)
+    language = Column(String, default="python")
+    time_limit = Column(Integer, default=30)  # minutes
+    status = Column(String, default=QuizStatus.DRAFT.value)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+
+    questions = relationship("Question", back_populates="quiz", cascade="all, delete-orphan",
+                             order_by="Question.order")
+
 
 class Question(Base):
     __tablename__ = "questions"
 
     id = Column(Integer, primary_key=True, index=True)
-    quiz_id = Column(Integer, ForeignKey("quizzes.id"))
-    description = Column(Text)
-    
+    quiz_id = Column(Integer, ForeignKey("quizzes.id", ondelete="CASCADE"))
+    question_type = Column(String, default=QuestionType.CODING_PROBLEM.value)
+    title = Column(String, default="")
+    description = Column(Text, default="")
+    code_template = Column(Text, default="")  # starter code or buggy code
+    expected_output = Column(Text, nullable=True)  # for output prediction
+    test_cases = Column(Text, nullable=True)  # JSON string of test cases
+    points = Column(Integer, default=10)
+    order = Column(Integer, default=0)
+
     quiz = relationship("Quiz", back_populates="questions")
     submissions = relationship("Submission", back_populates="question")
+
 
 class Submission(Base):
     __tablename__ = "submissions"
@@ -36,11 +70,14 @@ class Submission(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     question_id = Column(Integer, ForeignKey("questions.id"))
+    quiz_code = Column(String, nullable=True, index=True)
     code = Column(Text)
-    language = Column(String) # e.g., 'python' or 'c'
-    status = Column(String, default="queued") # queued, processing, completed, error
+    language = Column(String)
+    status = Column(String, default="queued")
     result = Column(Text, nullable=True)
+    is_correct = Column(Boolean, nullable=True)
+    score = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     user = relationship("User", back_populates="submissions")
     question = relationship("Question", back_populates="submissions")

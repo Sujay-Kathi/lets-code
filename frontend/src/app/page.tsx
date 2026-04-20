@@ -1,255 +1,206 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import Editor from "@monaco-editor/react";
-import { io, Socket } from "socket.io-client";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const SERVER_URL = "http://localhost:8000";
 
-export default function QuizInterface() {
-  const [language, setLanguage] = useState("python");
-  const [code, setCode] = useState("# Write your code here\nprint('Hello World!')");
-  const [output, setOutput] = useState("Awaiting execution...");
-  const [status, setStatus] = useState("idle");
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [warnings, setWarnings] = useState(0);
-  const socketRef = useRef<Socket | null>(null);
+export default function LandingPage() {
+  const router = useRouter();
+  const [quizCode, setQuizCode] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  const [joinError, setJoinError] = useState("");
 
-  useEffect(() => {
-    // Connect to Socket.IO
-    socketRef.current = io(SERVER_URL, {
-      transports: ["websocket", "polling"],
-    });
-
-    socketRef.current.on("status_update", (data) => {
-      setStatus(data.status);
-      if (data.result) {
-        setOutput(data.result);
-      } else {
-        setOutput(`Status: ${data.status}...`);
-      }
-    });
-
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, []);
-
-  // Anti-cheat: Tab Switch Detection
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isFullscreen) {
-        setWarnings((prev) => prev + 1);
-        alert("Warning: Tab switching is not allowed during the quiz!");
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isFullscreen]);
-
-  // Anti-cheat: Fullscreen Enforcement
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement && status === "idle") {
-        setWarnings((prev) => prev + 1);
-        alert("Warning: Exiting fullscreen is logged as a violation.");
-      }
-    };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, [status]);
-
-  const enterFullscreen = () => {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen();
-    }
-    setIsFullscreen(true);
-  };
-
-  const submitCode = async () => {
-    setStatus("submitting");
-    setOutput("Sending to server...");
+  const handleCreateQuiz = async () => {
+    setIsCreating(true);
     try {
-      // Create user first if needed, but we'll mock user_id=1, question_id=1
-      const res = await fetch(`${SERVER_URL}/submissions/`, {
+      const res = await fetch(`${SERVER_URL}/quizzes/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          code,
-          language,
-          user_id: 1,
-          question_id: 1,
+          title: "Untitled Quiz",
+          language: "python",
+          time_limit: 30,
+          questions: [],
         }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setOutput(`Error: ${JSON.stringify(data)}`);
-        setStatus("error");
+      if (res.ok) {
+        router.push(`/host/${data.code}`);
       }
-    } catch (err) {
-      setOutput(`Failed to connect to server: ${err}`);
-      setStatus("error");
+    } catch {
+      console.error("Failed to create quiz");
+    } finally {
+      setIsCreating(false);
     }
   };
 
-  if (!isFullscreen) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white font-sans p-4">
-        <div className="max-w-md text-center p-10 bg-slate-800 rounded-3xl shadow-2xl border border-slate-700 backdrop-blur-sm">
-          <div className="w-20 h-20 bg-blue-500 rounded-full mx-auto flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(59,130,246,0.5)]">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-            Secure Quiz Mode
-          </h1>
-          <p className="text-slate-400 mb-8">
-            This quiz requires fullscreen mode and actively monitors tab switches. Exiting fullscreen or changing tabs will flag your attempt.
-          </p>
-          <button
-            onClick={enterFullscreen}
-            className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl text-white font-bold text-lg shadow-[0_10px_20px_rgba(0,0,0,0.3)] transition-all transform hover:-translate-y-1"
-          >
-            Enter Fullscreen & Start
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleJoinQuiz = async () => {
+    if (!quizCode.trim()) {
+      setJoinError("Please enter a quiz code");
+      return;
+    }
+    setJoinError("");
+    router.push(`/join/${quizCode.trim().toUpperCase()}`);
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0F111A] text-slate-200 font-sans">
-      {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-[#1A1D27] border-b border-[#2D313E] shadow-sm">
+    <div className="min-h-screen mesh-bg flex flex-col">
+      {/* Navigation */}
+      <nav className="glass sticky top-0 z-50 px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-container)] flex items-center justify-center font-bold text-sm text-[var(--on-primary)]">
+            {"</>"}
+          </div>
+          <span className="text-xl font-bold tracking-tight text-[var(--on-surface)]">
+            LetsCode
+          </span>
+        </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-lg">
-              {"< />"}
-            </div>
-            <h1 className="text-xl font-bold tracking-tight">Code execution task</h1>
-          </div>
+          <a href="#features" className="text-sm text-[var(--on-surface-variant)] hover:text-[var(--on-surface)] transition-colors">
+            Features
+          </a>
+          <a href="#" className="text-sm text-[var(--on-surface-variant)] hover:text-[var(--on-surface)] transition-colors">
+            Docs
+          </a>
         </div>
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2 bg-[#2D313E] px-4 py-2 rounded-full">
-            <div className={`w-2 h-2 rounded-full ${warnings > 0 ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-            <span className="text-sm font-medium text-slate-300">
-              {warnings === 0 ? "Secure Session Active" : `${warnings} Violations Logged`}
+      </nav>
+
+      {/* Hero Section */}
+      <main className="flex-1 flex flex-col items-center justify-center px-6 relative z-10">
+        <div className="text-center mb-16 animate-fade-in">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--surface-container-high)] text-sm text-[var(--on-surface-variant)] mb-8">
+            <span className="w-2 h-2 rounded-full bg-[var(--primary)] animate-pulse" />
+            Live coding platform
+          </div>
+
+          <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight mb-6 leading-[1.1]">
+            <span className="text-[var(--on-surface)]">Lets</span>
+            <span className="gradient-text">Code</span>
+          </h1>
+
+          <p className="text-lg md:text-xl text-[var(--on-surface-variant)] max-w-2xl mx-auto leading-relaxed">
+            Real-time coding quizzes. Live sessions. Instant feedback.
+            <br />
+            <span className="text-[var(--on-surface)] font-medium">
+              Host challenges. Write code. Execute live.
             </span>
-          </div>
-          <button 
-            onClick={() => document.exitFullscreen()}
-            className="text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            Exit Quiz
-          </button>
-        </div>
-      </header>
-
-      {/* Main content */}
-      <main className="flex-1 flex overflow-hidden">
-        {/* Left pane: Question & Editor */}
-        <div className="flex-1 flex flex-col border-r border-[#2D313E]">
-          {/* Question area */}
-          <div className="p-6 border-b border-[#2D313E] bg-[#1A1D27]">
-            <h2 className="text-2xl font-semibold mb-2">Question 1: Reverse String</h2>
-            <p className="text-slate-400 text-sm leading-relaxed">
-              Write a function that reverses a string. The input string is given as an array of characters <code>s</code>. 
-              You must do this by modifying the input array in-place with <code>O(1)</code> extra memory.
-            </p>
-          </div>
-          
-          {/* Editor Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-[#151722] border-b border-[#2D313E]">
-            <div className="flex gap-2">
-              {["python", "c"].map(lang => (
-                <button
-                  key={lang}
-                  onClick={() => setLanguage(lang)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    language === lang 
-                      ? "bg-blue-600 text-white shadow-md" 
-                      : "bg-[#2D313E] text-slate-400 hover:text-white hover:bg-[#383C4A]"
-                  }`}
-                >
-                  {lang === 'c' ? 'C' : 'Python'}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={submitCode}
-              disabled={status === "submitting" || status === "processing"}
-              className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-white font-semibold text-sm shadow-[0_0_15px_rgba(16,185,129,0.3)] transition-all transform hover:scale-105"
-            >
-              {(status === "submitting" || status === "processing") ? (
-                <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Run Code
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Monaco Editor */}
-          <div className="flex-1 min-h-[400px]">
-            <Editor
-              height="100%"
-              language={language}
-              theme="vs-dark"
-              value={code}
-              onChange={(value) => setCode(value || "")}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 15,
-                fontFamily: "JetBrains Mono, Menlo, monospace",
-                padding: { top: 20 },
-                scrollBeyondLastLine: false,
-                smoothScrolling: true,
-                cursorBlinking: "smooth",
-                cursorSmoothCaretAnimation: "on",
-              }}
-            />
-          </div>
+          </p>
         </div>
 
-        {/* Right pane: Output Terminal */}
-        <div className="w-1/3 flex flex-col bg-[#0A0C10]">
-          <div className="px-4 py-3 bg-[#151722] border-b border-[#2D313E] flex items-center justify-between">
-            <h3 className="text-sm font-semibold tracking-wider text-slate-300 uppercase">Execution Output</h3>
-            <span className={`text-xs px-2 py-1 rounded ${status === 'completed' ? 'bg-green-900 text-green-300' : status === 'error' ? 'bg-red-900 text-red-300' : 'bg-slate-800 text-slate-400'}`}>
-              {status.toUpperCase()}
-            </span>
-          </div>
-          <div className="flex-1 p-4 font-mono text-sm overflow-auto">
-            {status === "idle" && output === "Awaiting execution..." ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        {/* Action Cards */}
+        <div className="grid md:grid-cols-2 gap-6 max-w-4xl w-full animate-slide-up">
+          {/* Host Card */}
+          <div className="group relative rounded-2xl bg-[var(--surface-container-low)] p-8 transition-all duration-300 hover:bg-[var(--surface-container)] cursor-pointer"
+               style={{ animationDelay: "0.1s" }}>
+            <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                 style={{ background: "radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(78,222,163,0.04), transparent 40%)" }} />
+            
+            <div className="relative z-10">
+              <div className="w-14 h-14 rounded-xl bg-[var(--surface-container-high)] flex items-center justify-center mb-6 group-hover:bg-[var(--surface-container-highest)] transition-colors">
+                <svg className="w-7 h-7 text-[var(--primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
                 </svg>
-                <p>Output will appear here</p>
               </div>
-            ) : (
-              <pre className={`whitespace-pre-wrap ${status === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
-                {output}
-              </pre>
-            )}
+
+              <h2 className="text-2xl font-bold text-[var(--on-surface)] mb-3">
+                Host a Quiz
+              </h2>
+              <p className="text-[var(--on-surface-variant)] text-sm leading-relaxed mb-8">
+                Create custom coding challenges with 5 question types. Set time limits,
+                choose languages, and host live quiz sessions for your students.
+              </p>
+
+              <button
+                onClick={handleCreateQuiz}
+                disabled={isCreating}
+                className="btn-primary w-full py-3.5 px-6 rounded-xl text-sm font-semibold tracking-wide disabled:opacity-50"
+              >
+                {isCreating ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Creating...
+                  </span>
+                ) : (
+                  "Create Quiz →"
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Join Card */}
+          <div className="group relative rounded-2xl bg-[var(--surface-container-low)] p-8 transition-all duration-300 hover:bg-[var(--surface-container)]"
+               style={{ animationDelay: "0.2s" }}>
+            <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                 style={{ background: "radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(173,198,255,0.04), transparent 40%)" }} />
+
+            <div className="relative z-10">
+              <div className="w-14 h-14 rounded-xl bg-[var(--surface-container-high)] flex items-center justify-center mb-6 group-hover:bg-[var(--surface-container-highest)] transition-colors">
+                <svg className="w-7 h-7 text-[var(--tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                </svg>
+              </div>
+
+              <h2 className="text-2xl font-bold text-[var(--on-surface)] mb-3">
+                Join a Quiz
+              </h2>
+              <p className="text-[var(--on-surface-variant)] text-sm leading-relaxed mb-6">
+                Enter a quiz code or use a link to join a live coding session.
+                Write, run, and submit code in real-time.
+              </p>
+
+              <div className="flex flex-col gap-3">
+                <input
+                  id="quiz-code-input"
+                  type="text"
+                  value={quizCode}
+                  onChange={(e) => { setQuizCode(e.target.value.toUpperCase()); setJoinError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleJoinQuiz()}
+                  placeholder="Enter Quiz Code"
+                  maxLength={6}
+                  className="input-field w-full py-3.5 px-5 rounded-xl text-sm font-mono tracking-[0.3em] text-center uppercase"
+                />
+                {joinError && (
+                  <p className="text-xs text-[var(--error)] text-center">{joinError}</p>
+                )}
+                <button
+                  onClick={handleJoinQuiz}
+                  className="btn-ghost w-full py-3.5 px-6 rounded-xl text-sm font-semibold"
+                >
+                  Join Session →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Feature Badges */}
+        <div id="features" className="flex flex-wrap items-center justify-center gap-3 mt-16 animate-fade-in" style={{ animationDelay: "0.4s" }}>
+          {[
+            { label: "5 Question Types", icon: "📝" },
+            { label: "Live Sessions", icon: "🔴" },
+            { label: "Code Execution", icon: "⚡" },
+            { label: "Anti-Cheat", icon: "🛡️" },
+            { label: "Real-time Results", icon: "📊" },
+          ].map((feature) => (
+            <div
+              key={feature.label}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[var(--surface-container)] text-xs font-medium text-[var(--on-surface-variant)]"
+            >
+              <span>{feature.icon}</span>
+              {feature.label}
+            </div>
+          ))}
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="px-8 py-6 text-center text-xs text-[var(--on-surface-variant)] opacity-60">
+        © 2025 LetsCode. Precision in every line.
+      </footer>
     </div>
   );
 }

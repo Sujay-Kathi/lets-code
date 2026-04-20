@@ -63,7 +63,7 @@ def execute_code_task(submission_id: int):
                 input=submission.code,
                 capture_output=True,
                 text=True,
-                timeout=5  # Overall docker timeout (inner timeout is 2s)
+                timeout=30  # Overall docker timeout (generous for Windows cold starts)
             )
             
             if result.returncode == 0:

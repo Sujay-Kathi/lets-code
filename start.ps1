@@ -1,5 +1,11 @@
 $ErrorActionPreference = "Stop"
 
+# Add Docker to PATH if not already present
+$dockerPath = "C:\Program Files\Docker\Docker\resources\bin"
+if ($env:PATH -notlike "*$dockerPath*") {
+    $env:PATH += ";$dockerPath"
+}
+
 Write-Host "Checking for Docker..." -ForegroundColor Cyan
 if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
     Write-Host "ERROR: Docker is not installed or not running." -ForegroundColor Red
@@ -9,17 +15,25 @@ if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "1. Starting Redis Container..." -ForegroundColor Cyan
-# Start a redis container named 'rce-redis' on port 6379
-docker run -d --name rce-redis -p 6379:6379 redis:alpine 2>$null
+# Stop and remove existing container if it exists
+$containerId = docker ps -aq -f "name=^rce-redis$"
+if ($containerId) {
+    Write-Host "Cleaning up existing rce-redis container..." -ForegroundColor Gray
+    docker stop rce-redis > $null 2>&1
+    docker rm rce-redis > $null 2>&1
+}
+
+# Start a fresh redis container
+docker run -d --name rce-redis -p 6379:6379 redis:alpine
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Redis might already be running. Attempting to start the existing container..." -ForegroundColor Yellow
-    docker start rce-redis 2>$null
+    Write-Host "ERROR: Failed to start Redis container." -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "2. Building Docker Sandbox Image (rce-worker)..." -ForegroundColor Cyan
-cd worker
+Set-Location worker
 docker build -t rce-worker .
-cd ..
+Set-Location ..
 
 Write-Host "3. Starting FastAPI Backend..." -ForegroundColor Cyan
 # Start in a new window
