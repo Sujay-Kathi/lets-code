@@ -2,9 +2,12 @@ fastapi
 uvicorn
 celery
 redis
+aioredis
 sqlalchemy
 python-socketio
 websockets
 python-multipart
 alembic
-psycopg2-binary
+pydantic
+pydantic-settings
+python-dotenv
