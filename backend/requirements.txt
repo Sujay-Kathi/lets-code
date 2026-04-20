@@ -5,4 +5,6 @@ redis
 sqlalchemy
 python-socketio
 websockets
-python-multipartb
+python-multipart
+alembic
+psycopg2-binary

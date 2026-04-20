@@ -1,8 +1,8 @@
 from celery import Celery
 import os
 import subprocess
-from .database import SessionLocal
-from .models import Submission
+from database import SessionLocal
+from models import Submission
 import socketio
 
 # Celery Configuration
