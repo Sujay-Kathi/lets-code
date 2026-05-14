@@ -127,11 +127,16 @@ export default function LiveQuiz() {
 
 
 
-  const reportViolation = async () => {
+  const reportViolation = () => {
     if (!userId || !quizCode) return;
     try {
-      await fetch(`${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`, { method: "POST", keepalive: true });
-    } catch (e) { console.error(e); }
+      const url = `${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`;
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url);
+      } else {
+        fetch(url, { method: "POST", keepalive: true }).catch(() => {});
+      }
+    } catch {}
   };
 
   // Anti-cheat: tab switch
