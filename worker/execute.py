@@ -89,13 +89,11 @@ if __name__ == "__main__":
     
     if DELIMITER in raw_payload:
         code, test_input = raw_payload.split(DELIMITER, 1)
-        # Handle newlines added by payload formatting safely
-        if code.endswith("\n"):
-            code = code[:-1]
-        if test_input.startswith("\n"):
-            test_input = test_input[1:]
+        code = code.strip()
+        # Remove carriage returns and strip leading newlines to ensure clean input streams
+        test_input = test_input.replace("\r", "").lstrip("\n")
     else:
-        code = raw_payload
+        code = raw_payload.strip()
         test_input = ""
     
     if args.language == "python":

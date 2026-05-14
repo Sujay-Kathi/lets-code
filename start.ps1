@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "2. Building Docker Sandbox Image (rce-worker)..." -ForegroundColor Cyan
 Set-Location worker
-docker build -t rce-worker .
+docker build --no-cache -t rce-worker .
 Set-Location ..
 
 Write-Host "3. Starting FastAPI Backend..." -ForegroundColor Cyan
