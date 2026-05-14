@@ -131,10 +131,8 @@ export default function LiveQuiz() {
     if (!userId || !quizCode) return;
     try {
       const url = `${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`;
-      if (navigator.sendBeacon) {
+      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
         navigator.sendBeacon(url);
-      } else {
-        fetch(url, { method: "POST", keepalive: true }).catch(() => {});
       }
     } catch {}
   };
