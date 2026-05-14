@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
+import Editor from "@monaco-editor/react";
 
 const SERVER_URL = "http://localhost:8000";
 
@@ -279,7 +280,15 @@ export default function QuizBuilder() {
               </div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Title</label><input type="text" value={aq.title} onChange={e => updateQ(activeQ!, "title", e.target.value)} className="input-field w-full py-3 px-4 rounded-xl text-lg font-semibold" /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Description</label><textarea value={aq.description} onChange={e => updateQ(activeQ!, "description", e.target.value)} rows={4} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none" /></div>
-              <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Code Template</label><textarea value={aq.code_template} onChange={e => updateQ(activeQ!, "code_template", e.target.value)} rows={10} className="input-field w-full py-4 px-4 rounded-xl text-sm resize-none font-mono" style={{ background: "var(--surface-container-lowest)", tabSize: 4 }} spellCheck={false} /></div>
+              <div>
+                <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Code Template</label>
+                <div className="h-64 rounded-xl overflow-hidden border border-[var(--surface-container-high)]">
+                  <Editor height="100%" language={language === "c" ? "c" : language}
+                    theme="vs-dark" value={aq.code_template}
+                    onChange={v => updateQ(activeQ!, "code_template", v || "")}
+                    options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: "JetBrains Mono, monospace", padding: { top: 12 }, scrollBeyondLastLine: false, tabSize: 4 }} />
+                </div>
+              </div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Expected Output</label><textarea value={aq.expected_output || ""} onChange={e => updateQ(activeQ!, "expected_output", e.target.value)} rows={3} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono" style={{ background: "var(--surface-container-lowest)" }} /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Test Cases (Stdin Input)</label><textarea value={aq.test_cases || ""} onChange={e => { updateQ(activeQ!, "test_cases", e.target.value); setTeacherInputs(p => ({ ...p, [activeQ!]: e.target.value })); }} rows={3} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono" placeholder="Enter standard input..." style={{ background: "var(--surface-container-lowest)" }} /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Points</label><input type="number" value={aq.points} onChange={e => updateQ(activeQ!, "points", Number(e.target.value))} min={1} max={100} className="input-field w-24 py-2.5 px-4 rounded-lg text-sm font-mono text-center" /></div>
@@ -297,15 +306,12 @@ export default function QuizBuilder() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1 block">Authoritative Solution Code</label>
-                  <textarea
-                    value={teacherCodes[activeQ!] ?? aq.code_template ?? ""}
-                    onChange={e => setTeacherCodes(p => ({ ...p, [activeQ!]: e.target.value }))}
-                    rows={8}
-                    className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono border border-[var(--primary)]/20 focus:border-[var(--primary)]"
-                    style={{ background: "var(--surface-container-lowest)", tabSize: 4 }}
-                    placeholder="Write pure reference implementation code here..."
-                    spellCheck={false}
-                  />
+                  <div className="h-64 rounded-xl overflow-hidden border border-[var(--primary)]/20">
+                    <Editor height="100%" language={language === "c" ? "c" : language}
+                      theme="vs-dark" value={teacherCodes[activeQ!] ?? aq.code_template ?? ""}
+                      onChange={v => setTeacherCodes(p => ({ ...p, [activeQ!]: v || "" }))}
+                      options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: "JetBrains Mono, monospace", padding: { top: 12 }, scrollBeyondLastLine: false, tabSize: 4 }} />
+                  </div>
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => compileTeacherCode(false)} disabled={compileStatuses[activeQ!] === "processing"} className="btn-ghost flex-1 py-2.5 rounded-xl text-xs font-semibold border border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 disabled:opacity-50">
