@@ -130,7 +130,7 @@ export default function LiveQuiz() {
   const reportViolation = async () => {
     if (!userId || !quizCode) return;
     try {
-      await fetch(`${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`, { method: "POST" });
+      await fetch(`${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`, { method: "POST", keepalive: true });
     } catch (e) { console.error(e); }
   };
 
