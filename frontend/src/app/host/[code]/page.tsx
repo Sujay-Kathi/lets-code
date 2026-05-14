@@ -313,21 +313,6 @@ export default function QuizBuilder() {
                       options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: "JetBrains Mono, monospace", padding: { top: 12 }, scrollBeyondLastLine: false, tabSize: 4 }} />
                   </div>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1 block">Baseline Test Input (Stdin)</label>
-                  <textarea
-                    value={teacherInputs[activeQ!] ?? aq.test_cases ?? ""}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setTeacherInputs(p => ({ ...p, [activeQ!]: val }));
-                      updateQ(activeQ!, "test_cases", val);
-                    }}
-                    rows={2}
-                    className="input-field w-full py-2 px-3 rounded-lg text-xs font-mono border border-[var(--primary)]/20 focus:border-[var(--primary)]"
-                    style={{ background: "var(--surface-container-lowest)" }}
-                    placeholder="Provide standard input values (separated by newlines) expected by your program..."
-                  />
-                </div>
                 <div className="flex gap-3">
                   <button onClick={() => compileTeacherCode(false)} disabled={compileStatuses[activeQ!] === "processing"} className="btn-ghost flex-1 py-2.5 rounded-xl text-xs font-semibold border border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 disabled:opacity-50">
                     🧪 Test Compile Baseline
@@ -336,14 +321,45 @@ export default function QuizBuilder() {
                     🔒 Final Compile (Save Baseline)
                   </button>
                 </div>
-                {compileOutputs[activeQ!] && (
-                  <div>
-                    <label className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block mb-1">Baseline Execution Output</label>
-                    <pre className="p-3 rounded-xl bg-[var(--surface-container-lowest)] font-mono text-xs overflow-x-auto whitespace-pre-wrap max-h-40 border border-[var(--surface-container-high)]">
-                      {compileOutputs[activeQ!]}
-                    </pre>
+
+                {/* Integrated I/O Terminal Console */}
+                <div className="rounded-xl bg-[#1e1e1e] border border-[var(--surface-container-highest)] overflow-hidden shadow-inner">
+                  <div className="px-4 py-2 bg-[#2d2d2d] flex items-center justify-between border-b border-[#3d3d3d]">
+                    <span className="text-[11px] font-bold font-mono text-gray-300 flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse"></span>
+                      Standard I/O Console (Execution Output & Stdin Input Feed)
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-mono">Docker Sandbox</span>
                   </div>
-                )}
+                  <div className="p-4 space-y-3">
+                    {/* Output section */}
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Execution Output stream</span>
+                      <pre className="p-3 rounded-lg bg-[#141414] font-mono text-xs text-green-400 overflow-x-auto whitespace-pre-wrap min-h-[4rem] max-h-40 border border-[#262626]">
+                        {compileOutputs[activeQ!] || "No output generated yet. Click 'Test Compile Baseline' to execute source logic."}
+                      </pre>
+                    </div>
+                    {/* Stdin Input feed section */}
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Standard Input Feed (Stdin buffer)</span>
+                      <div className="relative">
+                        <textarea
+                          value={teacherInputs[activeQ!] ?? aq.test_cases ?? ""}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setTeacherInputs(p => ({ ...p, [activeQ!]: val }));
+                            updateQ(activeQ!, "test_cases", val);
+                          }}
+                          rows={2}
+                          className="w-full py-2 px-3 rounded-lg bg-[#141414] font-mono text-xs text-yellow-300 border border-[#262626] focus:border-green-500 focus:outline-none resize-none placeholder:text-gray-600"
+                          placeholder="Type input values here (separated by newlines) that map directly into the execution output above..."
+                          spellCheck={false}
+                        />
+                        <div className="absolute right-2 bottom-2 text-[9px] text-gray-500 font-mono pointer-events-none">stdin feed</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
