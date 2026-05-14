@@ -313,6 +313,21 @@ export default function QuizBuilder() {
                       options={{ minimap: { enabled: false }, fontSize: 13, fontFamily: "JetBrains Mono, monospace", padding: { top: 12 }, scrollBeyondLastLine: false, tabSize: 4 }} />
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1 block">Baseline Test Input (Stdin)</label>
+                  <textarea
+                    value={teacherInputs[activeQ!] ?? aq.test_cases ?? ""}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setTeacherInputs(p => ({ ...p, [activeQ!]: val }));
+                      updateQ(activeQ!, "test_cases", val);
+                    }}
+                    rows={2}
+                    className="input-field w-full py-2 px-3 rounded-lg text-xs font-mono border border-[var(--primary)]/20 focus:border-[var(--primary)]"
+                    style={{ background: "var(--surface-container-lowest)" }}
+                    placeholder="Provide standard input values (separated by newlines) expected by your program..."
+                  />
+                </div>
                 <div className="flex gap-3">
                   <button onClick={() => compileTeacherCode(false)} disabled={compileStatuses[activeQ!] === "processing"} className="btn-ghost flex-1 py-2.5 rounded-xl text-xs font-semibold border border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 disabled:opacity-50">
                     🧪 Test Compile Baseline

@@ -104,6 +104,7 @@ def execute_code_task(submission_id: int):
             ai_result = evaluate_against_baseline(
                 problem_description=f"{question.title}\n\n{question.description}",
                 baseline_code=baseline.code,
+                baseline_input=baseline.input_used or "",
                 baseline_output=baseline.compiled_output,
                 student_code=submission.code,
                 student_input=user_input,

@@ -142,6 +142,7 @@ Respond ONLY with valid JSON, no markdown, no extra text:
 def evaluate_against_baseline(
     problem_description: str,
     baseline_code: str,
+    baseline_input: str,
     baseline_output: str,
     student_code: str,
     student_input: str,
@@ -156,6 +157,7 @@ def evaluate_against_baseline(
     Args:
         problem_description: Full problem statement.
         baseline_code: Authoritative code finalized by the teacher.
+        baseline_input: Stdin test input used by the teacher.
         baseline_output: Compiled output from the teacher's baseline.
         student_code: Submitted code by the student.
         student_input: Stdin input provided.
@@ -179,6 +181,9 @@ def evaluate_against_baseline(
 ```{language}
 {baseline_code}
 ```
+
+## Authoritative Baseline Stdin Input:
+{baseline_input if baseline_input else "(no input)"}
 
 ## Authoritative Baseline Compiled Output:
 {baseline_output if baseline_output else "(no output)"}
