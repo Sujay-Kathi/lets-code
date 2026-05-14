@@ -18,9 +18,12 @@ def run_python(code: str, test_input: str, timeout: int = 2):
             text=True,
             timeout=timeout
         )
+        stderr_out = result.stderr
+        if "EOFError: EOF when reading a line" in stderr_out:
+            stderr_out += "\n\n💡 [Sandbox Hint]: Your code called input() but the Standard Input Feed (Stdin buffer) was empty. Please type expected input values in the input pane below before running."
         return {
             "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stderr": stderr_out,
             "exit_code": result.returncode
         }
     except subprocess.TimeoutExpired:
