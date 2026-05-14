@@ -35,9 +35,11 @@ def run_in_docker(code: str, language: str, test_input: str) -> dict:
         "--language", language
     ]
     try:
+        DELIMITER = "---END_OF_CODE_DELIMITER---"
+        payload = f"{code}\n{DELIMITER}\n{test_input}"
         result = subprocess.run(
             docker_cmd,
-            input=f"{code}\n{test_input}",
+            input=payload,
             capture_output=True,
             text=True,
             timeout=30

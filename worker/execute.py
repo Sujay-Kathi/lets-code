@@ -4,15 +4,16 @@ import argparse
 import tempfile
 import os
 
-def run_python(code: str, timeout: int = 2):
+def run_python(code: str, test_input: str, timeout: int = 2):
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(code)
         temp_path = f.name
         
     try:
-        # Run python code
+        # Run python code passing input via stdin
         result = subprocess.run(
             ["python", temp_path],
+            input=test_input,
             capture_output=True,
             text=True,
             timeout=timeout
@@ -31,7 +32,7 @@ def run_python(code: str, timeout: int = 2):
     finally:
         os.remove(temp_path)
 
-def run_c(code: str, timeout: int = 2):
+def run_c(code: str, test_input: str, timeout: int = 2):
     with tempfile.NamedTemporaryFile(mode="w", suffix=".c", delete=False) as f:
         f.write(code)
         temp_path = f.name
@@ -52,9 +53,10 @@ def run_c(code: str, timeout: int = 2):
                 "exit_code": compile_res.returncode
             }
             
-        # Run
+        # Run passing input via stdin
         result = subprocess.run(
             [out_path],
+            input=test_input,
             capture_output=True,
             text=True,
             timeout=timeout
@@ -81,16 +83,27 @@ if __name__ == "__main__":
     parser.add_argument("--language", required=True, choices=["python", "c"])
     args = parser.parse_args()
 
-    # Read code from stdin
-    code = sys.stdin.read()
+    # Read payload from stdin
+    raw_payload = sys.stdin.read()
+    DELIMITER = "---END_OF_CODE_DELIMITER---"
+    
+    if DELIMITER in raw_payload:
+        code, test_input = raw_payload.split(DELIMITER, 1)
+        # Handle newlines added by payload formatting safely
+        if code.endswith("\n"):
+            code = code[:-1]
+        if test_input.startswith("\n"):
+            test_input = test_input[1:]
+    else:
+        code = raw_payload
+        test_input = ""
     
     if args.language == "python":
-        res = run_python(code)
+        res = run_python(code, test_input)
     else:
-        res = run_c(code)
+        res = run_c(code, test_input)
         
-    # Output result as JSON or simple structured text
-    # We will just print stdout if success, else stderr
+    # Output result as simple structured text
     if res["exit_code"] == 0:
         print(res["stdout"], end="")
     else:
