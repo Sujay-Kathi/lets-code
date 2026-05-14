@@ -69,6 +69,7 @@ class Question(Base):
 
     quiz = relationship("Quiz", back_populates="questions")
     submissions = relationship("Submission", back_populates="question")
+    baseline = relationship("QuestionBaseline", back_populates="question", uselist=False, cascade="all, delete-orphan")
 
 
 class Submission(Base):
@@ -86,7 +87,23 @@ class Submission(Base):
     score = Column(Integer, default=0)
     tab_switches = Column(Integer, default=0)
     time_taken = Column(Integer, nullable=True)  # in seconds
+    ai_verdict = Column(Text, nullable=True)  # AI evaluation reasoning
+    is_final = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="submissions")
     question = relationship("Question", back_populates="submissions")
+
+
+class QuestionBaseline(Base):
+    __tablename__ = "question_baselines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), unique=True, index=True)
+    code = Column(Text)
+    language = Column(String, default="python")
+    input_used = Column(Text, nullable=True)
+    compiled_output = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    question = relationship("Question", back_populates="baseline")

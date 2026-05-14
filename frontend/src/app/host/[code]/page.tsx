@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
 
 const SERVER_URL = "http://localhost:8000";
 
@@ -21,7 +22,8 @@ const TEMPLATES: Record<string, { title: string; description: string; code: stri
   function_based: { title: "Complete the function", description: "Implement the function body.", code: "def is_prime(n):\n    # Complete the logic\n    pass\n" },
 };
 
-interface Question { id?: number; quiz_id?: number; question_type: string; title: string; description: string; code_template: string; expected_output: string; test_cases: string; points: number; order: number; }
+interface QuestionBaseline { code: string; language: string; input_used?: string; compiled_output: string; }
+interface Question { id?: number; quiz_id?: number; question_type: string; title: string; description: string; code_template: string; expected_output: string; test_cases: string; points: number; order: number; baseline?: QuestionBaseline; }
 interface Quiz { id: number; title: string; code: string; language: string; time_limit: number; status: string; questions: Question[]; }
 
 export default function QuizBuilder() {
@@ -42,6 +44,12 @@ export default function QuizBuilder() {
   const [activeQ, setActiveQ] = useState<number | null>(null);
   const [copyOk, setCopyOk] = useState(false);
 
+  const [teacherCodes, setTeacherCodes] = useState<Record<number, string>>({});
+  const [teacherInputs, setTeacherInputs] = useState<Record<number, string>>({});
+  const [compileStatuses, setCompileStatuses] = useState<Record<number, string>>({});
+  const [compileOutputs, setCompileOutputs] = useState<Record<number, string>>({});
+  const socketRef = React.useRef<Socket | null>(null);
+
   const fetchQuiz = useCallback(async () => {
     try {
       const res = await fetch(`${SERVER_URL}/quizzes/${quizCode}`);
@@ -51,6 +59,26 @@ export default function QuizBuilder() {
         setMaxAttempts((data as any).max_attempts || 4);
         setQuestions(data.questions || []);
 
+        const initCodes: Record<number, string> = {};
+        const initInputs: Record<number, string> = {};
+        const initOutputs: Record<number, string> = {};
+        const initStatuses: Record<number, string> = {};
+        data.questions?.forEach((q, idx) => {
+          if (q.baseline) {
+            initCodes[idx] = q.baseline.code;
+            initInputs[idx] = q.baseline.input_used || "";
+            initOutputs[idx] = q.baseline.compiled_output;
+            initStatuses[idx] = "finalized";
+          } else {
+            initCodes[idx] = q.code_template || "";
+            initInputs[idx] = q.test_cases || "";
+          }
+        });
+        setTeacherCodes(initCodes);
+        setTeacherInputs(initInputs);
+        setCompileOutputs(initOutputs);
+        setCompileStatuses(initStatuses);
+
         if (data.questions?.length > 0) setActiveQ(0);
       }
     } catch (e) { console.error(e); }
@@ -58,6 +86,82 @@ export default function QuizBuilder() {
   }, [quizCode]);
 
   useEffect(() => { fetchQuiz(); }, [fetchQuiz]);
+
+  useEffect(() => {
+    socketRef.current = io(SERVER_URL, { transports: ["websocket", "polling"] });
+    socketRef.current.emit("join_teacher", { quiz_code: quizCode });
+
+    socketRef.current.on("teacher_compile_update", (data: { question_id: number; status: string }) => {
+      setQuestions(prev => {
+        const idx = prev.findIndex(q => q.id === data.question_id);
+        if (idx !== -1) {
+          setCompileStatuses(s => ({ ...s, [idx]: data.status }));
+          setCompileOutputs(o => ({ ...o, [idx]: "Compiling baseline..." }));
+        }
+        return prev;
+      });
+    });
+
+    socketRef.current.on("teacher_compile_result", (data: { question_id: number; status: string; output: string; is_final: boolean }) => {
+      setQuestions(prev => {
+        const idx = prev.findIndex(q => q.id === data.question_id);
+        if (idx !== -1) {
+          setCompileStatuses(s => ({ ...s, [idx]: data.is_final && data.status === "completed" ? "finalized" : data.status }));
+          setCompileOutputs(o => ({ ...o, [idx]: data.output }));
+          if (data.is_final && data.status === "completed") {
+            const updated = [...prev];
+            updated[idx] = {
+              ...updated[idx],
+              baseline: {
+                code: teacherCodes[idx] || updated[idx].code_template || "",
+                language: language,
+                input_used: teacherInputs[idx] || updated[idx].test_cases || "",
+                compiled_output: data.output,
+              }
+            };
+            return updated;
+          }
+        }
+        return prev;
+      });
+    });
+
+    return () => { socketRef.current?.disconnect(); };
+  }, [quizCode, language, teacherCodes, teacherInputs]);
+
+  const compileTeacherCode = async (isFinal: boolean) => {
+    if (activeQ === null) return;
+    const q = questions[activeQ];
+    if (!q.id) {
+      alert("Please save the question updates first before compiling.");
+      return;
+    }
+    const code = teacherCodes[activeQ] ?? q.code_template ?? "";
+    const inputUsed = teacherInputs[activeQ] ?? q.test_cases ?? "";
+
+    setCompileStatuses(p => ({ ...p, [activeQ]: "processing" }));
+    setCompileOutputs(p => ({ ...p, [activeQ]: "Triggering baseline compilation..." }));
+
+    try {
+      const res = await fetch(`${SERVER_URL}/quizzes/${quizCode}/questions/${q.id}/compile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          language,
+          input_used: inputUsed,
+          is_final: isFinal,
+        })
+      });
+      if (!res.ok) {
+        setCompileStatuses(p => ({ ...p, [activeQ]: "error" }));
+        setCompileOutputs(p => ({ ...p, [activeQ]: "Error triggering compilation" }));
+      }
+    } catch (e) {
+      setCompileStatuses(p => ({ ...p, [activeQ]: "error" }));
+      setCompileOutputs(p => ({ ...p, [activeQ]: "Network connection error" }));
+    }
+  };
 
   const addQuestion = async (type: string) => {
     setShowTypeDD(false);
@@ -177,7 +281,49 @@ export default function QuizBuilder() {
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Description</label><textarea value={aq.description} onChange={e => updateQ(activeQ!, "description", e.target.value)} rows={4} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none" /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Code Template</label><textarea value={aq.code_template} onChange={e => updateQ(activeQ!, "code_template", e.target.value)} rows={10} className="input-field w-full py-4 px-4 rounded-xl text-sm resize-none font-mono" style={{ background: "var(--surface-container-lowest)", tabSize: 4 }} spellCheck={false} /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Expected Output</label><textarea value={aq.expected_output || ""} onChange={e => updateQ(activeQ!, "expected_output", e.target.value)} rows={3} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono" style={{ background: "var(--surface-container-lowest)" }} /></div>
+              <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Test Cases (Stdin Input)</label><textarea value={aq.test_cases || ""} onChange={e => { updateQ(activeQ!, "test_cases", e.target.value); setTeacherInputs(p => ({ ...p, [activeQ!]: e.target.value })); }} rows={3} className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono" placeholder="Enter standard input..." style={{ background: "var(--surface-container-lowest)" }} /></div>
               <div><label className="text-xs font-medium text-[var(--on-surface-variant)] mb-2 block">Points</label><input type="number" value={aq.points} onChange={e => updateQ(activeQ!, "points", Number(e.target.value))} min={1} max={100} className="input-field w-24 py-2.5 px-4 rounded-lg text-sm font-mono text-center" /></div>
+
+              {/* Authoritative Baseline Configuration Section */}
+              <div className="p-6 rounded-2xl bg-[var(--surface-container-highest)] border border-[var(--primary)]/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-bold text-[var(--primary)] flex items-center gap-2">👑 Authoritative Solution Baseline</h4>
+                    <p className="text-xs text-[var(--on-surface-variant)]">Define the standard baseline logic that AI will compare student submissions against.</p>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${compileStatuses[activeQ!] === "finalized" ? "bg-[rgba(78,222,163,0.2)] text-[var(--primary)]" : "bg-[var(--surface-container-high)] text-[var(--on-surface-variant)]"}`}>
+                    {compileStatuses[activeQ!] === "finalized" ? "✓ Baseline Active" : (compileStatuses[activeQ!] || "Not Finalized")}
+                  </span>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[var(--on-surface-variant)] mb-1 block">Authoritative Solution Code</label>
+                  <textarea
+                    value={teacherCodes[activeQ!] ?? aq.code_template ?? ""}
+                    onChange={e => setTeacherCodes(p => ({ ...p, [activeQ!]: e.target.value }))}
+                    rows={8}
+                    className="input-field w-full py-3 px-4 rounded-xl text-sm resize-none font-mono border border-[var(--primary)]/20 focus:border-[var(--primary)]"
+                    style={{ background: "var(--surface-container-lowest)", tabSize: 4 }}
+                    placeholder="Write pure reference implementation code here..."
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => compileTeacherCode(false)} disabled={compileStatuses[activeQ!] === "processing"} className="btn-ghost flex-1 py-2.5 rounded-xl text-xs font-semibold border border-[var(--primary)]/30 hover:bg-[var(--primary)]/10 disabled:opacity-50">
+                    🧪 Test Compile Baseline
+                  </button>
+                  <button onClick={() => compileTeacherCode(true)} disabled={compileStatuses[activeQ!] === "processing"} className="btn-primary flex-1 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-lg shadow-[var(--primary)]/20">
+                    🔒 Final Compile (Save Baseline)
+                  </button>
+                </div>
+                {compileOutputs[activeQ!] && (
+                  <div>
+                    <label className="text-[10px] font-bold text-[var(--on-surface-variant)] uppercase tracking-wider block mb-1">Baseline Execution Output</label>
+                    <pre className="p-3 rounded-xl bg-[var(--surface-container-lowest)] font-mono text-xs overflow-x-auto whitespace-pre-wrap max-h-40 border border-[var(--surface-container-high)]">
+                      {compileOutputs[activeQ!]}
+                    </pre>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center"><div className="text-6xl mb-4 animate-float">🏗️</div><h2 className="text-xl font-bold text-[var(--on-surface)] mb-2">Build Your Quiz</h2><p className="text-sm text-[var(--on-surface-variant)]">Add questions from the sidebar</p></div>

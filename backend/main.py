@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 import models, schemas
 from database import engine, get_db
-from worker import execute_code_task
+from worker import execute_code_task, compile_teacher_code_task
 import socketio
 import os
 import string
@@ -365,6 +365,37 @@ def delete_question(quiz_code: str, question_id: int, db: Session = Depends(get_
     return {"message": "Question deleted"}
 
 
+@app.post("/quizzes/{quiz_code}/questions/{question_id}/compile")
+async def compile_teacher_question(
+    quiz_code: str,
+    question_id: int,
+    req: schemas.TeacherCompileRequest,
+    db: Session = Depends(get_db)
+):
+    """Teacher compiles or finalizes authoritative solution baseline."""
+    quiz = db.query(models.Quiz).filter(models.Quiz.code == quiz_code).first()
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+
+    db_question = db.query(models.Question).filter(
+        models.Question.id == question_id,
+        models.Question.quiz_id == quiz.id,
+    ).first()
+    if not db_question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    compile_teacher_code_task.delay(
+        question_id=question_id,
+        code=req.code,
+        language=req.language,
+        test_input=req.input_used or "",
+        is_final=req.is_final,
+        quiz_code=quiz_code
+    )
+
+    return {"status": "processing", "message": "Teacher compilation task triggered"}
+
+
 # ==================== JOIN / LIVE SESSION ====================
 
 @app.post("/quizzes/{quiz_code}/join", response_model=schemas.JoinQuizResponse)
@@ -431,6 +462,7 @@ async def create_submission(submission: schemas.SubmissionCreate, db: Session = 
         code=submission.code,
         language=submission.language,
         status="queued",
+        is_final=submission.is_final,
     )
     db.add(db_submission)
     db.commit()

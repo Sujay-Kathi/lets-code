@@ -22,6 +22,7 @@ interface Question {
 interface Quiz {
   id: number; title: string; code: string; language: string;
   time_limit: number; status: string; started_at: string | null; questions: Question[];
+  is_frozen: boolean; show_leaderboard: boolean;
 }
 
 export default function LiveQuiz() {
@@ -120,7 +121,7 @@ export default function LiveQuiz() {
   // Auto-submit when time ends or frozen
   useEffect(() => {
     if ((timeLeft === 0 && quiz?.status === 'live') || isFrozen) {
-      quiz?.questions.forEach(q => submitCode(q.id));
+      quiz?.questions.forEach(q => submitCode(q.id, true));
     }
   }, [timeLeft, isFrozen]);
 
@@ -200,15 +201,15 @@ export default function LiveQuiz() {
     setOutputs(p => ({ ...p, [questionId]: "Execution timed out. Please try again." }));
   }, []);
 
-  const submitCode = async (questionId: number) => {
+  const submitCode = async (questionId: number, isFinal: boolean = false) => {
     if (!userId || !quiz) return;
     const code = codes[questionId] || "";
     setStatuses(p => ({ ...p, [questionId]: "submitting" }));
-    setOutputs(p => ({ ...p, [questionId]: "Sending to server..." }));
+    setOutputs(p => ({ ...p, [questionId]: isFinal ? "Submitting final code for baseline validation..." : "Sending to server..." }));
     try {
       const res = await fetch(`${SERVER_URL}/submissions/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language: quiz.language, user_id: Number(userId), question_id: questionId, quiz_code: quizCode }),
+        body: JSON.stringify({ code, language: quiz.language, user_id: Number(userId), question_id: questionId, quiz_code: quizCode, is_final: isFinal }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -294,12 +295,18 @@ export default function LiveQuiz() {
 
           <div className="flex items-center justify-between px-4 py-2 bg-[var(--surface-container-lowest)]">
             <span className="text-xs text-[var(--on-surface-variant)] font-mono">{quiz.language}</span>
-            <button onClick={() => submitCode(q.id)} disabled={qStatus === "submitting" || qStatus === "queued" || qStatus === "processing"}
-              className="btn-primary px-5 py-2 rounded-lg text-xs font-semibold disabled:opacity-50 flex items-center gap-2">
-              {["submitting", "queued", "processing"].includes(qStatus) ? (
-                <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Running...</>
-              ) : (<>▶ Run Code</>)}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => submitCode(q.id, false)} disabled={["submitting", "queued", "processing", "completed"].includes(qStatus)}
+                className="btn-ghost px-4 py-2 rounded-lg text-xs font-semibold border border-[var(--primary)]/20 hover:bg-[var(--primary)]/10 disabled:opacity-50 flex items-center gap-1.5">
+                {["submitting", "queued", "processing"].includes(qStatus) ? (
+                  <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Running...</>
+                ) : (<>▶ Run Code</>)}
+              </button>
+              <button onClick={() => submitCode(q.id, true)} disabled={["submitting", "queued", "processing", "completed"].includes(qStatus)}
+                className="btn-primary px-5 py-2 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-[var(--primary)]/20">
+                🏆 Final Submit
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 min-h-[300px] relative">

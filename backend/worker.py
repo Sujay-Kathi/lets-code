@@ -2,9 +2,10 @@ from celery import Celery
 import os
 import subprocess
 from database import SessionLocal
-from models import Submission, Question
+from models import Submission, Question, QuestionBaseline
 from datetime import datetime
 import socketio
+from ai_evaluator import evaluate_with_ai, evaluate_against_baseline
 
 # Celery Configuration
 # We use Redis as the message broker.
@@ -24,7 +25,8 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-def run_in_docker(code: str, language: str, test_input: str) -> str:
+def run_in_docker(code: str, language: str, test_input: str) -> dict:
+    """Run code in Docker and capture both stdout and stderr separately."""
     docker_cmd = [
         "docker", "run", "--rm", "-i",
         "--network", "none",
@@ -35,22 +37,35 @@ def run_in_docker(code: str, language: str, test_input: str) -> str:
     try:
         result = subprocess.run(
             docker_cmd,
-            input=f"{code}\n{test_input}", # Assuming the wrapper reads code first or we handle differently
+            input=f"{code}\n{test_input}",
             capture_output=True,
             text=True,
             timeout=30
         )
-        if result.returncode == 0:
-            return result.stdout.strip()
-        else:
-            return result.stderr or result.stdout
+        return {
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+            "returncode": result.returncode,
+            "combined": (result.stdout + result.stderr).strip(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "stdout": "",
+            "stderr": "Execution timed out (30s limit)",
+            "returncode": -1,
+            "combined": "Execution timed out (30s limit)",
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "stdout": "",
+            "stderr": f"Error: {str(e)}",
+            "returncode": -1,
+            "combined": f"Error: {str(e)}",
+        }
 
 
 @celery_app.task(name="execute_code")
 def execute_code_task(submission_id: int):
-    # Setup database session
     db = SessionLocal()
     try:
         submission = db.query(Submission).filter(Submission.id == submission_id).first()
@@ -66,49 +81,64 @@ def execute_code_task(submission_id: int):
         sio.emit('status_update', {'submission_id': submission_id, 'status': 'processing'})
 
         question = db.query(Question).filter(Question.id == submission.question_id).first()
-        
-        # Split test cases and expected outputs by newline
-        inputs = [i.strip() for i in (question.test_cases or "").split("\n") if i.strip()]
-        expecteds = [e.strip() for e in (question.expected_output or "").split("\n") if e.strip()]
-        
-        # If no test cases defined, use empty input once
-        if not inputs:
-            inputs = [""]
-            expecteds = [(question.expected_output or "").strip()]
+        if not question:
+            submission.status = "error"
+            submission.result = "Question not found"
+            db.commit()
+            return {"error": "Question not found"}
 
-        total_cases = len(inputs)
-        passed_cases = 0
-        all_results = []
-
+        # --- STEP 1: Execute the code in Docker ---
+        # Use student's input from test_cases, or empty if none
+        user_input = (question.test_cases or "").strip()
+        
         start_time = datetime.utcnow()
-        for i in range(total_cases):
-            test_input = inputs[i]
-            expected = expecteds[i] if i < len(expecteds) else ""
-            
-            output = run_in_docker(submission.code, submission.language, test_input)
-            all_results.append(output)
-            
-            if output.strip() == expected.strip():
-                passed_cases += 1
+        execution = run_in_docker(submission.code, submission.language, user_input)
         end_time = datetime.utcnow()
-        
-        submission.time_taken = int((end_time - start_time).total_seconds())
-        submission.status = "completed"
-        submission.result = "\n---\n".join(all_results)
-        
-        # Scoring logic: (Passed / Total) * Points - Penalty
-        base_score = (passed_cases / total_cases) * question.points if total_cases > 0 else 0
-        penalty = submission.tab_switches * 2 # 2 points penalty per tab switch
-        submission.score = max(0, int(base_score - penalty))
-        submission.is_correct = (passed_cases == total_cases)
 
+        submission.time_taken = int((end_time - start_time).total_seconds())
+        submission.result = execution["combined"]
+
+        # --- STEP 2: AI Evaluation via NVIDIA NIM ---
+        baseline = db.query(QuestionBaseline).filter(QuestionBaseline.question_id == question.id).first()
+        if baseline:
+            ai_result = evaluate_against_baseline(
+                problem_description=f"{question.title}\n\n{question.description}",
+                baseline_code=baseline.code,
+                baseline_output=baseline.compiled_output,
+                student_code=submission.code,
+                student_input=user_input,
+                student_output=execution["combined"],
+                language=submission.language,
+                max_points=question.points,
+            )
+        else:
+            ai_result = evaluate_with_ai(
+                problem_description=f"{question.title}\n\n{question.description}",
+                student_code=submission.code,
+                user_input=user_input,
+                actual_output=execution["combined"],
+                language=submission.language,
+                max_points=question.points,
+            )
+
+        submission.is_correct = ai_result["is_correct"]
+        submission.ai_verdict = ai_result["reasoning"]
+
+        # Score: AI score minus tab-switch penalty
+        penalty = submission.tab_switches * 2  # 2 points penalty per tab switch
+        submission.score = max(0, ai_result["score"] - penalty)
+        submission.status = "completed"
+        
         db.commit()
         
-        # Emit final status
+        # Emit final status with AI verdict
         sio.emit('status_update', {
             'submission_id': submission_id, 
             'status': submission.status,
-            'result': submission.result
+            'result': submission.result,
+            'is_correct': submission.is_correct,
+            'score': submission.score,
+            'ai_verdict': submission.ai_verdict,
         })
         
         return {"submission_id": submission_id, "status": submission.status}
@@ -122,6 +152,60 @@ def execute_code_task(submission_id: int):
             submission.result = str(e)
             submission.status = "error"
             db.commit()
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="compile_teacher_code")
+def compile_teacher_code_task(question_id: int, code: str, language: str, test_input: str, is_final: bool, quiz_code: str):
+    db = SessionLocal()
+    try:
+        sio = socketio.RedisManager(REDIS_URL, write_only=True)
+        
+        # Notify starting compile
+        sio.emit('teacher_compile_update', {'question_id': question_id, 'status': 'processing'}, room=f"teacher_{quiz_code}")
+        
+        execution = run_in_docker(code, language, test_input)
+        combined_out = execution["combined"]
+
+        if is_final:
+            baseline = db.query(QuestionBaseline).filter(QuestionBaseline.question_id == question_id).first()
+            if not baseline:
+                baseline = QuestionBaseline(
+                    question_id=question_id,
+                    code=code,
+                    language=language,
+                    input_used=test_input,
+                    compiled_output=combined_out,
+                )
+                db.add(baseline)
+            else:
+                baseline.code = code
+                baseline.language = language
+                baseline.input_used = test_input
+                baseline.compiled_output = combined_out
+            db.commit()
+
+        sio.emit('teacher_compile_result', {
+            'question_id': question_id,
+            'status': 'completed',
+            'output': combined_out,
+            'is_final': is_final,
+        }, room=f"teacher_{quiz_code}")
+
+        return {"question_id": question_id, "status": "completed"}
+    except Exception as e:
+        try:
+            sio = socketio.RedisManager(REDIS_URL, write_only=True)
+            sio.emit('teacher_compile_result', {
+                'question_id': question_id,
+                'status': 'error',
+                'output': f"Error: {str(e)}",
+                'is_final': is_final,
+            }, room=f"teacher_{quiz_code}")
+        except:
+            pass
         return {"error": str(e)}
     finally:
         db.close()

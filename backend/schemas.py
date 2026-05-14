@@ -18,6 +18,24 @@ class UserResponse(UserBase):
         from_attributes = True
 
 
+# --- Question Baseline ---
+class QuestionBaselineBase(BaseModel):
+    code: str
+    language: str = "python"
+    input_used: Optional[str] = None
+    compiled_output: str
+
+class QuestionBaselineCreate(QuestionBaselineBase):
+    pass
+
+class QuestionBaselineResponse(QuestionBaselineBase):
+    id: int
+    question_id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+
 # --- Question ---
 class QuestionBase(BaseModel):
     question_type: str = "coding_problem"
@@ -45,6 +63,7 @@ class QuestionUpdate(BaseModel):
 class QuestionResponse(QuestionBase):
     id: int
     quiz_id: int
+    baseline: Optional[QuestionBaselineResponse] = None
     class Config:
         from_attributes = True
 
@@ -95,6 +114,7 @@ class SubmissionCreate(SubmissionBase):
     user_id: int
     question_id: int
     quiz_code: Optional[str] = None
+    is_final: bool = False
 
 class SubmissionResponse(SubmissionBase):
     id: int
@@ -107,9 +127,19 @@ class SubmissionResponse(SubmissionBase):
     score: int = 0
     tab_switches: int = 0
     time_taken: Optional[int] = None
+    ai_verdict: Optional[str] = None
+    is_final: bool = False
     created_at: datetime
     class Config:
         from_attributes = True
+
+
+# --- Teacher Compile ---
+class TeacherCompileRequest(BaseModel):
+    code: str
+    language: str = "python"
+    input_used: Optional[str] = None
+    is_final: bool = False
 
 
 # --- Join Quiz ---
