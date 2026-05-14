@@ -13,7 +13,7 @@ from typing import List
 import csv
 from io import StringIO
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 # Socket.IO setup using Redis manager
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -23,6 +23,17 @@ sio_app = socketio.ASGIApp(sio)
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
+
+# Auto-migrate SQLite schema to inject missing columns on older database files
+try:
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("SELECT is_final FROM submissions LIMIT 1"))
+        except Exception:
+            conn.execute(text("ALTER TABLE submissions ADD COLUMN is_final BOOLEAN DEFAULT 0"))
+            conn.commit()
+except Exception:
+    pass
 
 app = FastAPI(title="LetsCode - Live Coding Quiz Platform")
 
