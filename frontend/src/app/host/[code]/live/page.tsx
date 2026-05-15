@@ -160,27 +160,27 @@ export default function HostLiveDashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--surface)] flex flex-col">
-      <header className="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-container)] flex items-center justify-center font-bold text-xs text-[var(--on-primary)]">{"</>"}</div>
-          <span className="text-lg font-bold text-[var(--on-surface)]">{quiz.title}</span>
+      <header className="glass sticky top-0 z-50 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3 md:gap-4">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-container)] flex items-center justify-center font-bold text-xs text-[var(--on-primary)]">{"</>"}          </div>
+          <span className="text-base md:text-lg font-bold text-[var(--on-surface)] truncate max-w-[120px] md:max-w-none">{quiz.title}</span>
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[rgba(4,180,162,0.15)] text-xs font-semibold text-[var(--secondary)]">
             <span className="w-2 h-2 rounded-full bg-[var(--secondary)] animate-pulse" />LIVE
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           {!quiz.started_at && (
-            <button onClick={startQuizTimer} disabled={startingTimer} className="px-6 py-2 rounded-lg bg-[var(--primary)] text-[var(--on-primary)] text-sm font-bold animate-pulse hover:animate-none">
+            <button onClick={startQuizTimer} disabled={startingTimer} className="px-4 md:px-6 py-2 rounded-lg bg-[var(--primary)] text-[var(--on-primary)] text-xs md:text-sm font-bold animate-pulse hover:animate-none">
               {startingTimer ? "Starting..." : "🚀 Start Quiz Now"}
             </button>
           )}
-          <button onClick={togglePause} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${isPaused ? "bg-[var(--secondary)] text-[var(--on-secondary)]" : "bg-[var(--surface-container-high)] text-[var(--on-surface)]"}`}>
+          <button onClick={togglePause} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all ${isPaused ? "bg-[var(--secondary)] text-[var(--on-secondary)]" : "bg-[var(--surface-container-high)] text-[var(--on-surface)]"}`}>
             {isPaused ? "▶ Resume" : "⏸ Pause"}
           </button>
-          <button onClick={toggleFreeze} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${isFrozen ? "bg-[var(--error)] text-white" : "bg-[var(--surface-container-high)] text-[var(--on-surface)]"}`}>
+          <button onClick={toggleFreeze} className={`px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-semibold transition-all ${isFrozen ? "bg-[var(--error)] text-white" : "bg-[var(--surface-container-high)] text-[var(--on-surface)]"}`}>
             {isFrozen ? "❄️ Unfreeze" : "🧊 Freeze"}
           </button>
-          <button onClick={endQuiz} disabled={ending} className="px-4 py-2 rounded-lg bg-[var(--error-container)] text-[var(--error)] text-sm font-semibold hover:brightness-110 transition-all">
+          <button onClick={endQuiz} disabled={ending} className="px-3 md:px-4 py-2 rounded-lg bg-[var(--error-container)] text-[var(--error)] text-xs md:text-sm font-semibold hover:brightness-110 transition-all">
             {ending ? "Ending..." : "End Quiz"}
           </button>
         </div>
@@ -188,7 +188,7 @@ export default function HostLiveDashboard() {
 
 
 
-      <main className="flex-1 flex p-8 gap-8">
+      <main className="flex-1 flex flex-col md:flex-row p-4 md:p-8 gap-4 md:gap-8 overflow-auto">
         <div className="flex-1 flex flex-col items-center gap-10">
           {/* Timer */}
           <div className="text-center">
@@ -235,7 +235,7 @@ export default function HostLiveDashboard() {
         </div>
 
         {/* Sidebar: Monitoring & Activity */}
-        <aside className="w-96 flex flex-col gap-6">
+        <aside className="w-full md:w-96 flex flex-col gap-6">
           {/* Students Monitor */}
           <div className="flex-[2] glass rounded-3xl p-6 flex flex-col overflow-hidden">
             <div className="flex items-center justify-between mb-6">

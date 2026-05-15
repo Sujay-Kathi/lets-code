@@ -207,21 +207,21 @@ export default function QuizBuilder() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--surface)]">
-      <header className="glass sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <header className="glass sticky top-0 z-50 px-4 md:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3 md:gap-4">
           <button onClick={() => router.push("/")} className="text-[var(--on-surface-variant)] hover:text-[var(--on-surface)]">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
           </button>
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-container)] flex items-center justify-center font-bold text-xs text-[var(--on-primary)]">{"</>"}</div>
-          <span className="text-lg font-bold text-[var(--on-surface)]">Create Quiz</span>
+          <span className="text-base md:text-lg font-bold text-[var(--on-surface)]">Create Quiz</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => { navigator.clipboard.writeText(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-container-high)] text-sm font-mono text-[var(--primary)]">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+          <button onClick={() => { navigator.clipboard.writeText(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }} className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-[var(--surface-container-high)] text-xs md:text-sm font-mono text-[var(--primary)]">
             <span className="tracking-[0.15em]">{quizCode}</span>
             {copyOk ? <span className="text-xs">✓</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
           </button>
-          <button onClick={saveSettings} disabled={saving} className="btn-ghost px-4 py-2 rounded-lg text-sm">{saving ? "Saving..." : "Save"}</button>
-          <button onClick={publish} disabled={publishing || questions.length === 0} className="btn-primary px-5 py-2.5 rounded-lg text-sm disabled:opacity-40">{publishing ? "Publishing..." : "Go Live 🚀"}</button>
+          <button onClick={saveSettings} disabled={saving} className="btn-ghost px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm">{saving ? "Saving..." : "Save"}</button>
+          <button onClick={publish} disabled={publishing || questions.length === 0} className="btn-primary px-4 md:px-5 py-2.5 rounded-lg text-xs md:text-sm disabled:opacity-40">{publishing ? "Publishing..." : "Go Live 🚀"}</button>
         </div>
       </header>
 
@@ -251,8 +251,8 @@ export default function QuizBuilder() {
 
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <aside className="w-72 bg-[var(--surface-container-lowest)] overflow-y-auto flex flex-col">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <aside className="w-full md:w-72 bg-[var(--surface-container-lowest)] overflow-y-auto flex flex-col max-h-[30vh] md:max-h-none">
           <div className="p-4"><span className="text-sm font-semibold text-[var(--on-surface)]">Questions ({questions.length})</span></div>
           <div className="flex-1 px-3 space-y-2 pb-4">
             {questions.map((q, i) => { const m = getType(q.question_type); return (

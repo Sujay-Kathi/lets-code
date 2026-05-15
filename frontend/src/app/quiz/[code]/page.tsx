@@ -7,6 +7,8 @@ import { io, Socket } from "socket.io-client";
 
 const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
+const isMobile = () => typeof window !== "undefined" && (window.innerWidth < 800 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
 const TYPE_META: Record<string, { label: string; badge: string; icon: string }> = {
   coding_problem: { label: "Coding Problem", badge: "badge-coding", icon: "💻" },
   debugging: { label: "Debugging", badge: "badge-debugging", icon: "🐛" },
@@ -136,9 +138,7 @@ export default function LiveQuiz() {
     if (!userId || !quizCode) return;
     try {
       const url = `${SERVER_URL}/quizzes/${quizCode}/violations/${userId}`;
-      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-        navigator.sendBeacon(url);
-      }
+      fetch(url, { method: "POST", keepalive: true }).catch(() => {});
     } catch {}
   };
 
@@ -155,8 +155,9 @@ export default function LiveQuiz() {
     return () => document.removeEventListener("visibilitychange", handler);
   }, [isFullscreen, quiz]);
 
-  // Anti-cheat: window size
+  // Anti-cheat: window size (disabled on mobile — phones always have small viewports)
   useEffect(() => {
+    if (isMobile()) return;
     const handler = () => {
       if (window.innerWidth < 800 || window.innerHeight < 600) {
         if (quiz?.status === 'live') {
@@ -173,8 +174,9 @@ export default function LiveQuiz() {
 
 
 
-  // Anti-cheat: fullscreen
+  // Anti-cheat: fullscreen (only on desktop — mobile browsers don't support the Fullscreen API)
   useEffect(() => {
+    if (isMobile()) return;
     const handler = () => { 
       setIsFullscreen(!!document.fullscreenElement); 
       if (!document.fullscreenElement && quiz?.status === 'live') { 
@@ -187,8 +189,19 @@ export default function LiveQuiz() {
     return () => document.removeEventListener("fullscreenchange", handler);
   }, [quiz]);
 
+  // On mobile, automatically set fullscreen state to true (bypass the gate)
+  useEffect(() => {
+    if (isMobile()) setIsFullscreen(true);
+  }, []);
 
-  const enterFullscreen = () => { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); };
+  const enterFullscreen = () => {
+    if (isMobile()) {
+      setIsFullscreen(true);
+      return;
+    }
+    document.documentElement.requestFullscreen?.();
+    setIsFullscreen(true);
+  };
 
   const pollSubmission = useCallback(async (submissionId: number, questionId: number, isFinal: boolean) => {
     const maxAttempts = 30;
@@ -301,7 +314,7 @@ export default function LiveQuiz() {
       </div>
 
       {/* Main */}
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left: Question + Editor */}
         <div className="flex-1 flex flex-col">
           <div className="p-6 bg-[var(--surface-container-low)]">
@@ -342,7 +355,7 @@ export default function LiveQuiz() {
 
 
         {/* Right: I/O Panel */}
-        <div className="w-[400px] flex flex-col bg-[var(--surface-container-lowest)]">
+        <div className="w-full md:w-[400px] flex flex-col bg-[var(--surface-container-lowest)] min-h-[250px]">
           {/* Stdin Input Section */}
           <div className="px-4 py-2.5 bg-[var(--surface-container-low)] border-b border-[var(--surface-container-high)]">
             <div className="flex items-center justify-between mb-2">
