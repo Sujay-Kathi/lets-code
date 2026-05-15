@@ -89,6 +89,7 @@ class Submission(Base):
     time_taken = Column(Integer, nullable=True)  # in seconds
     ai_verdict = Column(Text, nullable=True)  # AI evaluation reasoning
     is_final = Column(Boolean, default=False)
+    stdin_input = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="submissions")

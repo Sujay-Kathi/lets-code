@@ -32,6 +32,11 @@ try:
         except Exception:
             conn.execute(text("ALTER TABLE submissions ADD COLUMN is_final BOOLEAN DEFAULT 0"))
             conn.commit()
+        try:
+            conn.execute(text("SELECT stdin_input FROM submissions LIMIT 1"))
+        except Exception:
+            conn.execute(text("ALTER TABLE submissions ADD COLUMN stdin_input TEXT"))
+            conn.commit()
 except Exception:
     pass
 
@@ -474,6 +479,7 @@ async def create_submission(submission: schemas.SubmissionCreate, db: Session = 
         language=submission.language,
         status="queued",
         is_final=submission.is_final,
+        stdin_input=submission.stdin_input,
     )
     db.add(db_submission)
     db.commit()

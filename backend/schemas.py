@@ -115,6 +115,7 @@ class SubmissionCreate(SubmissionBase):
     question_id: int
     quiz_code: Optional[str] = None
     is_final: bool = False
+    stdin_input: Optional[str] = None
 
 class SubmissionResponse(SubmissionBase):
     id: int

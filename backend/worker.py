@@ -90,8 +90,8 @@ def execute_code_task(submission_id: int):
             return {"error": "Question not found"}
 
         # --- STEP 1: Execute the code in Docker ---
-        # Use student's input from test_cases, or empty if none
-        user_input = (question.test_cases or "").strip()
+        # Use student-provided stdin_input for execution
+        user_input = (submission.stdin_input or "").strip()
         
         start_time = datetime.utcnow()
         execution = run_in_docker(submission.code, submission.language, user_input)
@@ -100,49 +100,60 @@ def execute_code_task(submission_id: int):
         submission.time_taken = int((end_time - start_time).total_seconds())
         submission.result = execution["combined"]
 
-        # --- STEP 2: AI Evaluation via NVIDIA NIM ---
-        baseline = db.query(QuestionBaseline).filter(QuestionBaseline.question_id == question.id).first()
-        if baseline:
-            ai_result = evaluate_against_baseline(
-                problem_description=f"{question.title}\n\n{question.description}",
-                baseline_code=baseline.code,
-                baseline_input=baseline.input_used or "",
-                baseline_output=baseline.compiled_output,
-                student_code=submission.code,
-                student_input=user_input,
-                student_output=execution["combined"],
-                language=submission.language,
-                max_points=question.points,
-            )
+        # --- STEP 2: AI Evaluation (ONLY for final submissions) ---
+        if submission.is_final:
+            baseline = db.query(QuestionBaseline).filter(QuestionBaseline.question_id == question.id).first()
+            if baseline:
+                ai_result = evaluate_against_baseline(
+                    problem_description=f"{question.title}\n\n{question.description}",
+                    baseline_code=baseline.code,
+                    baseline_input=baseline.input_used or "",
+                    baseline_output=baseline.compiled_output,
+                    student_code=submission.code,
+                    student_input=user_input,
+                    student_output=execution["combined"],
+                    language=submission.language,
+                    max_points=question.points,
+                )
+            else:
+                ai_result = evaluate_with_ai(
+                    problem_description=f"{question.title}\n\n{question.description}",
+                    student_code=submission.code,
+                    user_input=user_input,
+                    actual_output=execution["combined"],
+                    language=submission.language,
+                    max_points=question.points,
+                )
+
+            submission.is_correct = ai_result["is_correct"]
+            submission.ai_verdict = ai_result["reasoning"]
+
+            # Score: AI score minus tab-switch penalty
+            penalty = submission.tab_switches * 2  # 2 points penalty per tab switch
+            submission.score = max(0, ai_result["score"] - penalty)
         else:
-            ai_result = evaluate_with_ai(
-                problem_description=f"{question.title}\n\n{question.description}",
-                student_code=submission.code,
-                user_input=user_input,
-                actual_output=execution["combined"],
-                language=submission.language,
-                max_points=question.points,
-            )
+            # Non-final "Run Code" — just execution, no scoring
+            submission.is_correct = None
+            submission.ai_verdict = None
+            submission.score = 0
 
-        submission.is_correct = ai_result["is_correct"]
-        submission.ai_verdict = ai_result["reasoning"]
-
-        # Score: AI score minus tab-switch penalty
-        penalty = submission.tab_switches * 2  # 2 points penalty per tab switch
-        submission.score = max(0, ai_result["score"] - penalty)
         submission.status = "completed"
         
         db.commit()
         
-        # Emit final status with AI verdict
-        sio.emit('status_update', {
+        # Emit final status
+        emit_data = {
             'submission_id': submission_id, 
             'status': submission.status,
             'result': submission.result,
-            'is_correct': submission.is_correct,
-            'score': submission.score,
-            'ai_verdict': submission.ai_verdict,
-        })
+        }
+        if submission.is_final:
+            emit_data.update({
+                'is_correct': submission.is_correct,
+                'score': submission.score,
+                'ai_verdict': submission.ai_verdict,
+            })
+        sio.emit('status_update', emit_data)
         
         return {"submission_id": submission_id, "status": submission.status}
 

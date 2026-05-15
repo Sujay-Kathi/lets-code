@@ -33,6 +33,8 @@ export default function LiveQuiz() {
   const [codes, setCodes] = useState<Record<number, string>>({});
   const [outputs, setOutputs] = useState<Record<number, string>>({});
   const [statuses, setStatuses] = useState<Record<number, string>>({});
+  const [stdinInputs, setStdinInputs] = useState<Record<number, string>>({});
+  const [aiVerdicts, setAiVerdicts] = useState<Record<number, { is_correct: boolean; score: number; verdict: string }>>({});
   const [timeLeft, setTimeLeft] = useState(0);
   const [warnings, setWarnings] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -79,9 +81,12 @@ export default function LiveQuiz() {
     socketRef.current = io(SERVER_URL, { transports: ["websocket", "polling"] });
     socketRef.current.emit('join_quiz', { quiz_code: quizCode });
     
-    socketRef.current.on("status_update", (data: { submission_id: number; status: string; result?: string }) => {
+    socketRef.current.on("status_update", (data: { submission_id: number; status: string; result?: string; is_correct?: boolean; score?: number; ai_verdict?: string }) => {
       setStatuses(p => ({ ...p, [data.submission_id]: data.status }));
       if (data.result) setOutputs(p => ({ ...p, [data.submission_id]: data.result! }));
+      if (data.ai_verdict !== undefined) {
+        setAiVerdicts(p => ({ ...p, [data.submission_id]: { is_correct: data.is_correct || false, score: data.score || 0, verdict: data.ai_verdict || "" } }));
+      }
     });
 
     socketRef.current.on("quiz_status", (data: { status: string }) => {
@@ -185,7 +190,7 @@ export default function LiveQuiz() {
 
   const enterFullscreen = () => { document.documentElement.requestFullscreen?.(); setIsFullscreen(true); };
 
-  const pollSubmission = useCallback(async (submissionId: number, questionId: number) => {
+  const pollSubmission = useCallback(async (submissionId: number, questionId: number, isFinal: boolean) => {
     const maxAttempts = 30;
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise(r => setTimeout(r, 2000));
@@ -196,6 +201,9 @@ export default function LiveQuiz() {
           setStatuses(p => ({ ...p, [questionId]: data.status }));
           if (data.result) setOutputs(p => ({ ...p, [questionId]: data.result }));
           else setOutputs(p => ({ ...p, [questionId]: `Status: ${data.status}...` }));
+          if (isFinal && data.ai_verdict) {
+            setAiVerdicts(p => ({ ...p, [questionId]: { is_correct: data.is_correct || false, score: data.score || 0, verdict: data.ai_verdict } }));
+          }
           if (data.status === "completed" || data.status === "error") return;
         }
       } catch { /* retry */ }
@@ -207,19 +215,27 @@ export default function LiveQuiz() {
   const submitCode = async (questionId: number, isFinal: boolean = false) => {
     if (!userId || !quiz) return;
     const code = codes[questionId] || "";
+    const stdinInput = stdinInputs[questionId] || "";
     setStatuses(p => ({ ...p, [questionId]: "submitting" }));
-    setOutputs(p => ({ ...p, [questionId]: isFinal ? "Submitting final code for baseline validation..." : "Sending to server..." }));
+    setOutputs(p => ({ ...p, [questionId]: isFinal ? "🏆 Final submission — running code & AI evaluation..." : "▶ Running code..." }));
+    if (isFinal) {
+      setAiVerdicts(p => { const next = { ...p }; delete next[questionId]; return next; });
+    }
     try {
       const res = await fetch(`${SERVER_URL}/submissions/`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language: quiz.language, user_id: Number(userId), question_id: questionId, quiz_code: quizCode, is_final: isFinal }),
+        body: JSON.stringify({ code, language: quiz.language, user_id: Number(userId), question_id: questionId, quiz_code: quizCode, is_final: isFinal, stdin_input: stdinInput }),
       });
       if (res.ok) {
         const data = await res.json();
         setStatuses(p => ({ ...p, [questionId]: data.status }));
-        setOutputs(p => ({ ...p, [questionId]: `Status: ${data.status}... Executing code...` }));
-        pollSubmission(data.id, questionId);
-      } else { setOutputs(p => ({ ...p, [questionId]: "Error submitting" })); setStatuses(p => ({ ...p, [questionId]: "error" })); }
+        setOutputs(p => ({ ...p, [questionId]: isFinal ? `Executing & evaluating...` : `Executing code...` }));
+        pollSubmission(data.id, questionId, isFinal);
+      } else {
+        const errData = await res.json().catch(() => ({ detail: "Error submitting" }));
+        setOutputs(p => ({ ...p, [questionId]: errData.detail || "Error submitting" }));
+        setStatuses(p => ({ ...p, [questionId]: "error" }));
+      }
     } catch { setOutputs(p => ({ ...p, [questionId]: "Connection error" })); setStatuses(p => ({ ...p, [questionId]: "error" })); }
   };
 
@@ -249,6 +265,8 @@ export default function LiveQuiz() {
   const tm = TYPE_META[q.question_type] || TYPE_META.coding_problem;
   const qStatus = statuses[q.id] || "idle";
   const qOutput = outputs[q.id] || "";
+  const qVerdict = aiVerdicts[q.id] || null;
+  const isRunning = ["submitting", "queued", "processing"].includes(qStatus);
 
   return (
     <div className="flex flex-col h-screen bg-[var(--surface)] text-[var(--on-surface)]">
@@ -299,14 +317,15 @@ export default function LiveQuiz() {
           <div className="flex items-center justify-between px-4 py-2 bg-[var(--surface-container-lowest)]">
             <span className="text-xs text-[var(--on-surface-variant)] font-mono">{quiz.language}</span>
             <div className="flex items-center gap-2">
-              <button onClick={() => submitCode(q.id, false)} disabled={["submitting", "queued", "processing", "completed"].includes(qStatus)}
+              <button onClick={() => submitCode(q.id, false)} disabled={isRunning}
                 className="btn-ghost px-4 py-2 rounded-lg text-xs font-semibold border border-[var(--primary)]/20 hover:bg-[var(--primary)]/10 disabled:opacity-50 flex items-center gap-1.5">
-                {["submitting", "queued", "processing"].includes(qStatus) ? (
+                {isRunning ? (
                   <><svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>Running...</>
                 ) : (<>▶ Run Code</>)}
               </button>
-              <button onClick={() => submitCode(q.id, true)} disabled={["submitting", "queued", "processing", "completed"].includes(qStatus)}
-                className="btn-primary px-5 py-2 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-[var(--primary)]/20">
+              <button onClick={() => submitCode(q.id, true)} disabled={isRunning || !qOutput}
+                className="btn-primary px-5 py-2 rounded-lg text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-[var(--primary)]/20"
+                title={!qOutput ? "Run your code first before final submit" : "Submit for AI evaluation"}>
                 🏆 Final Submit
               </button>
             </div>
@@ -322,24 +341,80 @@ export default function LiveQuiz() {
         </div>
 
 
-        {/* Right: Output */}
-        <div className="w-[360px] flex flex-col bg-[var(--surface-container-lowest)]">
-          <div className="px-4 py-3 bg-[var(--surface-container-low)] flex items-center justify-between">
-            <h3 className="text-xs font-semibold tracking-wider text-[var(--on-surface-variant)] uppercase">Output</h3>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${qStatus === "completed" ? "bg-[rgba(78,222,163,0.15)] text-[var(--primary)]" : qStatus === "error" ? "bg-[rgba(255,180,171,0.15)] text-[var(--error)]" : "bg-[var(--surface-container-high)] text-[var(--on-surface-variant)]"}`}>
-              {qStatus.toUpperCase()}
+        {/* Right: I/O Panel */}
+        <div className="w-[400px] flex flex-col bg-[var(--surface-container-lowest)]">
+          {/* Stdin Input Section */}
+          <div className="px-4 py-2.5 bg-[var(--surface-container-low)] border-b border-[var(--surface-container-high)]">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[10px] font-semibold tracking-wider text-[var(--on-surface-variant)] uppercase flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" /></svg>
+                Standard Input (stdin)
+              </h3>
+              <span className="text-[9px] text-[var(--on-surface-variant)] opacity-50">Type input values here</span>
+            </div>
+            <textarea
+              value={stdinInputs[q.id] || ""}
+              onChange={e => setStdinInputs(p => ({ ...p, [q.id]: e.target.value }))}
+              placeholder={`Enter input values here (one per line)...\ne.g.\n5\n10`}
+              className="w-full h-[80px] bg-[var(--surface)] border border-[var(--surface-container-high)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--on-surface)] placeholder:text-[var(--on-surface-variant)]/30 resize-none focus:outline-none focus:border-[var(--primary)]/50 focus:ring-1 focus:ring-[var(--primary)]/20 transition-all"
+              spellCheck={false}
+            />
+          </div>
+
+          {/* Output Header */}
+          <div className="px-4 py-2.5 bg-[var(--surface-container-low)] flex items-center justify-between">
+            <h3 className="text-[10px] font-semibold tracking-wider text-[var(--on-surface-variant)] uppercase">Output</h3>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+              qStatus === "completed" 
+                ? qVerdict 
+                  ? qVerdict.is_correct 
+                    ? "bg-[rgba(78,222,163,0.15)] text-[var(--primary)]" 
+                    : "bg-[rgba(255,180,171,0.15)] text-[var(--error)]" 
+                  : "bg-[rgba(78,222,163,0.15)] text-[var(--primary)]"
+                : qStatus === "error" 
+                  ? "bg-[rgba(255,180,171,0.15)] text-[var(--error)]" 
+                  : "bg-[var(--surface-container-high)] text-[var(--on-surface-variant)]"
+            }`}>
+              {qStatus === "completed" && qVerdict ? (qVerdict.is_correct ? "✓ CORRECT" : "✗ INCORRECT") : qStatus.toUpperCase()}
             </span>
           </div>
+
+          {/* Output Display */}
           <div className="flex-1 p-4 font-mono text-sm overflow-auto">
             {qOutput ? (
               <pre className={`whitespace-pre-wrap ${qStatus === "error" ? "text-[var(--error)]" : "text-[var(--primary)]"}`}>{qOutput}</pre>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-[var(--on-surface-variant)] opacity-40">
                 <svg className="w-12 h-12 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                <p className="text-xs">Output appears here</p>
+                <p className="text-xs">Run your code to see output</p>
+                <p className="text-[10px] mt-1 opacity-60">Type stdin input above if needed</p>
               </div>
             )}
           </div>
+
+          {/* AI Verdict Section (shown after Final Submit) */}
+          {qVerdict && (
+            <div className={`px-4 py-3 border-t ${
+              qVerdict.is_correct 
+                ? "border-[rgba(78,222,163,0.3)] bg-[rgba(78,222,163,0.05)]" 
+                : "border-[rgba(255,180,171,0.3)] bg-[rgba(255,82,82,0.05)]"
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`text-lg ${qVerdict.is_correct ? "" : ""}`}>{qVerdict.is_correct ? "✅" : "❌"}</span>
+                  <span className={`text-xs font-bold ${qVerdict.is_correct ? "text-[var(--primary)]" : "text-[var(--error)]"}`}>
+                    {qVerdict.is_correct ? "Correct!" : "Incorrect"}
+                  </span>
+                </div>
+                <span className={`text-sm font-black ${qVerdict.is_correct ? "text-[var(--primary)]" : "text-[var(--error)]"}`}>
+                  {qVerdict.score}/{q.points} pts
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--on-surface-variant)] leading-relaxed">
+                <span className="font-semibold text-[var(--on-surface)]">AI Verdict:</span> {qVerdict.verdict}
+              </p>
+            </div>
+          )}
         </div>
       </main>
 
