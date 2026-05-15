@@ -47,26 +47,33 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "2. Building Docker Sandbox Image (rce-worker)..." -ForegroundColor Cyan
-Set-Location worker
-$buildAttempts = 0
-$buildSuccess = $false
-while ($buildAttempts -lt 3 -and -not $buildSuccess) {
-    $buildAttempts++
-    Write-Host "  Build attempt $buildAttempts/3..." -ForegroundColor Gray
-    docker build --no-cache -t rce-worker . 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $buildSuccess = $true
-    } else {
-        Write-Host "  Build attempt $buildAttempts failed. Retrying in 5s..." -ForegroundColor Yellow
-        Start-Sleep -Seconds 5
+Write-Host "2. Docker Sandbox Image (rce-worker)..." -ForegroundColor Cyan
+# Check if image already exists - skip build if so (use --force-rebuild flag to override)
+$existingImage = docker images rce-worker --format "{{.ID}}" 2>$null
+if ($existingImage -and -not $args -contains "--force-rebuild") {
+    Write-Host "  Image already exists. Skipping build. (use --force-rebuild to rebuild)" -ForegroundColor Green
+} else {
+    Write-Host "  Building image..." -ForegroundColor Gray
+    Set-Location worker
+    $buildAttempts = 0
+    $buildSuccess = $false
+    while ($buildAttempts -lt 3 -and -not $buildSuccess) {
+        $buildAttempts++
+        Write-Host "  Build attempt $buildAttempts/3..." -ForegroundColor Gray
+        docker build -t rce-worker . 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $buildSuccess = $true
+        } else {
+            Write-Host "  Build attempt $buildAttempts failed. Retrying in 5s..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
     }
-}
-Set-Location ..
-if (-not $buildSuccess) {
-    Write-Host "WARNING: Docker sandbox build failed after 3 attempts." -ForegroundColor Red
-    Write-Host "Code execution will fail. Check Docker Desktop and internet connectivity." -ForegroundColor Yellow
-    Write-Host "You can rebuild later with: cd worker; docker build -t rce-worker ." -ForegroundColor Gray
+    Set-Location ..
+    if (-not $buildSuccess) {
+        Write-Host "WARNING: Docker sandbox build failed after 3 attempts." -ForegroundColor Red
+        Write-Host "Code execution will fail. Check Docker Desktop and internet connectivity." -ForegroundColor Yellow
+        Write-Host "You can rebuild later with: cd worker; docker build -t rce-worker ." -ForegroundColor Gray
+    }
 }
 
 # Build env var string to inject into sub-processes
