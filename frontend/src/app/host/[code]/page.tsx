@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import Editor from "@monaco-editor/react";
 
-const SERVER_URL = "http://localhost:8000";
+const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
 const QUESTION_TYPES = [
   { value: "coding_problem", label: "Coding Problem", badge: "badge-coding", icon: "💻", desc: "Full program with input/output" },

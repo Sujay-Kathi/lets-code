@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-const SERVER_URL = "http://127.0.0.1:8000";
+const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
 export default function JoinQuiz() {
   const params = useParams();

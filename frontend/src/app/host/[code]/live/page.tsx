@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 
-const SERVER_URL = "http://127.0.0.1:8000";
+const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
 interface Question { id: number; question_type: string; title: string; points: number; order: number; }
 interface Quiz { id: number; title: string; code: string; language: string; time_limit: number; status: string; started_at: string | null; questions: Question[]; }

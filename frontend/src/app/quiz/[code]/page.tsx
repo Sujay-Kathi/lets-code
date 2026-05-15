@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Editor from "@monaco-editor/react";
 import { io, Socket } from "socket.io-client";
 
-const SERVER_URL = "http://127.0.0.1:8000";
+const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
 const TYPE_META: Record<string, { label: string; badge: string; icon: string }> = {
   coding_problem: { label: "Coding Problem", badge: "badge-coding", icon: "💻" },

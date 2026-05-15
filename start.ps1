@@ -92,14 +92,14 @@ $envBlock = ($envSetCommands -join "; ")
 
 Write-Host "3. Starting FastAPI Backend..." -ForegroundColor Cyan
 # Start in a new window with env vars injected
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; uvicorn main:app --host 127.0.0.1 --port 8000"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; uvicorn main:app --host 0.0.0.0 --port 8000"
 
 Write-Host "4. Starting Celery Worker..." -ForegroundColor Cyan
 # Celery on Windows requires the 'solo' pool. Env vars injected for AI evaluator.
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; celery -A worker.celery_app worker --pool=solo --loglevel=info"
 
 Write-Host "5. Starting Next.js Frontend..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev -- --hostname 0.0.0.0"
 
 Write-Host "=====================================================" -ForegroundColor Green
 Write-Host "All services are starting up in separate windows!" -ForegroundColor Green
