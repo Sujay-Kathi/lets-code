@@ -8,9 +8,34 @@ produces correct output for a given problem statement and input.
 import os
 import json
 import logging
+from pathlib import Path
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+# Load .env file as fallback if env vars aren't already set
+def _load_dotenv_fallback():
+    """Load environment variables from .env file if not already present."""
+    if os.getenv("NVIDIA_API_KEY"):
+        return  # Already set, no need for fallback
+    env_paths = [
+        Path(__file__).parent.parent / ".env",  # project root
+        Path(__file__).parent / ".env",          # backend dir
+    ]
+    for env_path in env_paths:
+        if env_path.exists():
+            with open(env_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, _, val = line.partition("=")
+                        key, val = key.strip(), val.strip()
+                        if not os.getenv(key):
+                            os.environ[key] = val
+            logger.info(f"Loaded env fallback from {env_path}")
+            break
+
+_load_dotenv_fallback()
 
 # NVIDIA NIM Configuration
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")

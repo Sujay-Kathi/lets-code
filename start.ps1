@@ -1,5 +1,22 @@
 $ErrorActionPreference = "Stop"
 
+# Load .env file into current session so all child processes inherit these vars
+$envFile = Join-Path $PSScriptRoot ".env"
+if (Test-Path $envFile) {
+    Write-Host "Loading environment variables from .env..." -ForegroundColor Gray
+    Get-Content $envFile | ForEach-Object {
+        $_ = $_.Trim()
+        if ($_ -and -not $_.StartsWith("#") -and $_ -match "^([^=]+)=(.*)$") {
+            $key = $Matches[1].Trim()
+            $val = $Matches[2].Trim()
+            [Environment]::SetEnvironmentVariable($key, $val, "Process")
+            Write-Host "  [env] $key = $($val.Substring(0, [Math]::Min(12, $val.Length)))..." -ForegroundColor DarkGray
+        }
+    }
+} else {
+    Write-Host "WARNING: .env file not found. AI evaluation will not work." -ForegroundColor Yellow
+}
+
 # Add Docker to PATH if not already present
 $dockerPath = "C:\Program Files\Docker\Docker\resources\bin"
 if ($env:PATH -notlike "*$dockerPath*") {
@@ -32,16 +49,47 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "2. Building Docker Sandbox Image (rce-worker)..." -ForegroundColor Cyan
 Set-Location worker
-docker build --no-cache -t rce-worker .
+$buildAttempts = 0
+$buildSuccess = $false
+while ($buildAttempts -lt 3 -and -not $buildSuccess) {
+    $buildAttempts++
+    Write-Host "  Build attempt $buildAttempts/3..." -ForegroundColor Gray
+    docker build --no-cache -t rce-worker . 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $buildSuccess = $true
+    } else {
+        Write-Host "  Build attempt $buildAttempts failed. Retrying in 5s..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 5
+    }
+}
 Set-Location ..
+if (-not $buildSuccess) {
+    Write-Host "WARNING: Docker sandbox build failed after 3 attempts." -ForegroundColor Red
+    Write-Host "Code execution will fail. Check Docker Desktop and internet connectivity." -ForegroundColor Yellow
+    Write-Host "You can rebuild later with: cd worker; docker build -t rce-worker ." -ForegroundColor Gray
+}
+
+# Build env var string to inject into sub-processes
+$envSetCommands = @()
+if (Test-Path $envFile) {
+    Get-Content $envFile | ForEach-Object {
+        $_ = $_.Trim()
+        if ($_ -and -not $_.StartsWith("#") -and $_ -match "^([^=]+)=(.*)$") {
+            $key = $Matches[1].Trim()
+            $val = $Matches[2].Trim()
+            $envSetCommands += "`$env:$key='$val'"
+        }
+    }
+}
+$envBlock = ($envSetCommands -join "; ")
 
 Write-Host "3. Starting FastAPI Backend..." -ForegroundColor Cyan
-# Start in a new window
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; .\.venv\Scripts\Activate.ps1; uvicorn main:app --host 127.0.0.1 --port 8000"
+# Start in a new window with env vars injected
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; uvicorn main:app --host 127.0.0.1 --port 8000"
 
 Write-Host "4. Starting Celery Worker..." -ForegroundColor Cyan
-# Celery on Windows requires the 'solo' pool thread instead of default multiprocessing
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; .\.venv\Scripts\Activate.ps1; celery -A worker.celery_app worker --pool=solo --loglevel=info"
+# Celery on Windows requires the 'solo' pool. Env vars injected for AI evaluator.
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; celery -A worker.celery_app worker --pool=solo --loglevel=info"
 
 Write-Host "5. Starting Next.js Frontend..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev"
