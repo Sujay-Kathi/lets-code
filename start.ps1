@@ -101,7 +101,17 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envB
 Write-Host "5. Starting Next.js Frontend..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev -- --hostname 0.0.0.0"
 
+# Detect WiFi IP for network access
+$wifiIP = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Wi-Fi" -ErrorAction SilentlyContinue).IPAddress
+if (-not $wifiIP) {
+    $wifiIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.)' -and $_.InterfaceAlias -notmatch 'vEthernet|Loopback|Bluetooth' } | Select-Object -First 1).IPAddress
+}
+
 Write-Host "=====================================================" -ForegroundColor Green
 Write-Host "All services are starting up in separate windows!" -ForegroundColor Green
-Write-Host "Wait a few seconds, then open: http://localhost:3000" -ForegroundColor White
+Write-Host ""
+Write-Host "  Local:    http://localhost:3000" -ForegroundColor White
+if ($wifiIP) {
+    Write-Host "  Network:  http://${wifiIP}:3000  (use this on your phone)" -ForegroundColor Yellow
+}
 Write-Host "=====================================================" -ForegroundColor Green
