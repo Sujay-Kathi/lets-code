@@ -96,15 +96,14 @@ Write-Host "4. Starting Celery Worker..." -ForegroundColor Cyan
 # Celery on Windows requires the 'solo' pool. Env vars injected for AI evaluator.
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; $envBlock; .\.venv\Scripts\Activate.ps1; celery -A worker.celery_app worker --pool=solo --loglevel=info"
 
-# Detect WiFi IP for network access
+# Detect WiFi IP for network access (informational)
 $wifiIP = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Wi-Fi" -ErrorAction SilentlyContinue).IPAddress
 if (-not $wifiIP) {
     $wifiIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.)' -and $_.InterfaceAlias -notmatch 'vEthernet|Loopback|Bluetooth' } | Select-Object -First 1).IPAddress
 }
-$hostAddr = if ($wifiIP) { $wifiIP } else { "0.0.0.0" }
 
-Write-Host "5. Starting Next.js Frontend (on $hostAddr)..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev -- --hostname $hostAddr"
+Write-Host "5. Starting Next.js Frontend (on localhost)..." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd frontend; npm run dev"
 
 Write-Host "=====================================================" -ForegroundColor Green
 Write-Host "All services are starting up in separate windows!" -ForegroundColor Green
