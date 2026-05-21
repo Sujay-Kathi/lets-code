@@ -104,6 +104,25 @@ def execute_code_task(submission_id: int):
         if submission.is_final:
             baseline = db.query(QuestionBaseline).filter(QuestionBaseline.question_id == question.id).first()
             if baseline:
+                # 1. Run student's code on baseline's input (if baseline input exists and is different from student input)
+                student_output_on_baseline_input = ""
+                b_in = (baseline.input_used or "").strip()
+                s_in = user_input.strip()
+                
+                if b_in and b_in != s_in:
+                    exec_stud_on_base = run_in_docker(submission.code, submission.language, b_in)
+                    student_output_on_baseline_input = exec_stud_on_base["combined"]
+                else:
+                    student_output_on_baseline_input = execution["combined"]
+
+                # 2. Run teacher's code on student's input (if student input exists and is different from baseline input)
+                baseline_output_on_student_input = ""
+                if s_in and s_in != b_in:
+                    exec_base_on_stud = run_in_docker(baseline.code, baseline.language, s_in)
+                    baseline_output_on_student_input = exec_base_on_stud["combined"]
+                else:
+                    baseline_output_on_student_input = baseline.compiled_output
+
                 ai_result = evaluate_against_baseline(
                     problem_description=f"{question.title}\n\n{question.description}",
                     baseline_code=baseline.code,
@@ -114,6 +133,8 @@ def execute_code_task(submission_id: int):
                     student_output=execution["combined"],
                     language=submission.language,
                     max_points=question.points,
+                    student_output_on_baseline_input=student_output_on_baseline_input,
+                    baseline_output_on_student_input=baseline_output_on_student_input,
                 )
             else:
                 ai_result = evaluate_with_ai(

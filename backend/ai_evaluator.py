@@ -174,6 +174,8 @@ def evaluate_against_baseline(
     student_output: str,
     language: str,
     max_points: int,
+    student_output_on_baseline_input: str = "",
+    baseline_output_on_student_input: str = "",
 ) -> dict:
     """
     Use NVIDIA NIM to perform a deep logic comparison between a student's code
@@ -189,6 +191,8 @@ def evaluate_against_baseline(
         student_output: Compiled output from the student's submission.
         language: Programming language.
         max_points: Maximum points.
+        student_output_on_baseline_input: Student output on baseline input.
+        baseline_output_on_student_input: Baseline output on student input.
 
     Returns:
         dict containing is_correct, score, and reasoning.
@@ -207,28 +211,34 @@ def evaluate_against_baseline(
 {baseline_code}
 ```
 
-## Authoritative Baseline Stdin Input:
-{baseline_input if baseline_input else "(no input)"}
-
-## Authoritative Baseline Compiled Output:
-{baseline_output if baseline_output else "(no output)"}
-
 ## Student's Submitted Code ({language}):
 ```{language}
 {student_code}
 ```
 
-## Student's Stdin Input:
-{student_input if student_input else "(no input)"}
+## Comparative Test Runs (Same Inputs on Both Implementations):
 
-## Student's Compiled Output:
-{student_output if student_output else "(no output)"}
+### Test Case 1 (Baseline Input):
+- Input Used: {baseline_input if baseline_input else "(no input)"}
+- Teacher's Output: {baseline_output if baseline_output else "(no output)"}
+- Student's Output on this Input: {student_output_on_baseline_input if student_output_on_baseline_input else "(no output)"}
+
+### Test Case 2 (Student Input):
+- Input Used: {student_input if student_input else "(no input)"}
+- Teacher's Output on this Input: {baseline_output_on_student_input if baseline_output_on_student_input else "(no output)"}
+- Student's Output: {student_output if student_output else "(no output)"}
 
 ## Evaluation Rules:
 1. Deeply analyze the conceptual algorithmic logic of both the teacher's baseline code and the student's submitted code.
-2. If the logic of compilation and the core conceptual logic match the intended problem behavior, grant full points.
-3. If the actual compiled outputs match exactly, that confirms correctness. However, if the outputs differ slightly due to custom print formats, extra newline characters, or different intermediate debug messages, but the underlying logic is perfectly sound and equivalent to the baseline, mark as CORRECT.
-4. If the student's logic fundamentally diverges from the correct solution or contains unexpected exceptions/errors, mark as INCORRECT.
+2. Focus strictly on functional correctness and logical equivalence.
+3. If the student's outputs match the teacher's outputs for the same inputs (Test Case 1 and Test Case 2), the code is functionally correct.
+4. Do NOT penalize for cosmetic differences. This includes:
+   - Variable names or function parameter naming differences (e.g. `x, y` vs `a, b`).
+   - Minor formatting/spacing/newline differences.
+   - Slightly different text in descriptive prompts or error prefixes (e.g. print statements like `Enter value of a: ` vs standard inputs).
+   - Differences in caught exception/error strings (e.g., student prints `Error:` while teacher prints `Error: Division by zero is not allowed!`). As long as both catch the same exception class and print/handle an error state appropriately, it is considered LOGICALLY equivalent and correct.
+5. If the logic is sound and the results represent the correct execution flow and math/logic, award the maximum points ({max_points}).
+6. Only award less points if there is a real logical error, wrong output values, or unhandled exceptions that break functional requirements.
 
 Respond ONLY with valid JSON, no markdown fences, no extra text:
 {{
