@@ -7,6 +7,34 @@ import Editor from "@monaco-editor/react";
 
 const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (typeof window !== "undefined") {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        console.error("Navigator clipboard error:", e);
+      }
+    }
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const success = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return success;
+    } catch (e) {
+      console.error("Fallback clipboard error:", e);
+      return false;
+    }
+  }
+  return false;
+};
+
 const QUESTION_TYPES = [
   { value: "coding_problem", label: "Coding Problem", badge: "badge-coding", icon: "💻", desc: "Full program with input/output" },
   { value: "debugging", label: "Debugging", badge: "badge-debugging", icon: "🐛", desc: "Fix errors in given code" },
@@ -216,7 +244,7 @@ export default function QuizBuilder() {
           <span className="text-base md:text-lg font-bold text-[var(--on-surface)]">Create Quiz</span>
         </div>
         <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-          <button onClick={() => { navigator.clipboard.writeText(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }} className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-[var(--surface-container-high)] text-xs md:text-sm font-mono text-[var(--primary)]">
+          <button onClick={async () => { await copyToClipboard(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }} className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-[var(--surface-container-high)] text-xs md:text-sm font-mono text-[var(--primary)]">
             <span className="tracking-[0.15em]">{quizCode}</span>
             {copyOk ? <span className="text-xs">✓</span> : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
           </button>

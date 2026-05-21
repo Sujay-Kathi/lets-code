@@ -6,6 +6,34 @@ import { io, Socket } from "socket.io-client";
 
 const SERVER_URL = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://127.0.0.1:8000";
 
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (typeof window !== "undefined") {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) {
+        console.error("Navigator clipboard error:", e);
+      }
+    }
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      const success = document.execCommand("copy");
+      document.body.removeChild(textarea);
+      return success;
+    } catch (e) {
+      console.error("Fallback clipboard error:", e);
+      return false;
+    }
+  }
+  return false;
+};
+
 interface Question { id: number; question_type: string; title: string; points: number; order: number; }
 interface Quiz { id: number; title: string; code: string; language: string; time_limit: number; status: string; started_at: string | null; questions: Question[]; }
 
@@ -204,11 +232,11 @@ export default function HostLiveDashboard() {
             <p className="text-sm text-[var(--on-surface-variant)] mb-4">Students join with this code</p>
             <div className="text-5xl font-mono font-extrabold tracking-[0.3em] text-[var(--primary)] mb-6">{quizCode}</div>
             <div className="flex gap-3">
-              <button onClick={() => { navigator.clipboard.writeText(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }}
+              <button onClick={async () => { await copyToClipboard(quizCode); setCopyOk(true); setTimeout(() => setCopyOk(false), 2000); }}
                 className="btn-ghost flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
                 {copyOk ? "✓ Copied!" : "Copy Code"}
               </button>
-              <button onClick={() => { navigator.clipboard.writeText(shareUrl); alert("Link copied!"); }}
+              <button onClick={async () => { await copyToClipboard(shareUrl); alert("Link copied!"); }}
                 className="btn-ghost flex-1 py-3 rounded-xl text-sm flex items-center justify-center gap-2">
                 🔗 Copy Link
               </button>
