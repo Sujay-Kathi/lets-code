@@ -32,16 +32,14 @@ if (-not (Get-Command "docker" -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "1. Starting Redis Container..." -ForegroundColor Cyan
-# Stop and remove existing container if it exists
 $containerId = docker ps -aq -f "name=^rce-redis$"
 if ($containerId) {
-    Write-Host "Cleaning up existing rce-redis container..." -ForegroundColor Gray
-    docker stop rce-redis > $null 2>&1
-    docker rm rce-redis > $null 2>&1
+    Write-Host "Starting existing rce-redis container..." -ForegroundColor Gray
+    docker start rce-redis > $null 2>&1
+} else {
+    Write-Host "Creating and starting new rce-redis container..." -ForegroundColor Gray
+    docker run -d --name rce-redis -p 6379:6379 redis:alpine > $null
 }
-
-# Start a fresh redis container
-docker run -d --name rce-redis -p 6379:6379 redis:alpine
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to start Redis container." -ForegroundColor Red
     exit 1
